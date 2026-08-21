@@ -73,7 +73,7 @@ def test_对拍_匹配期望输出(用例: Path):
 def test_对拍_示例(文件: Path):
     码 = 文件.read_text(encoding="utf-8")
     # 需要用户输入的示例无法在无人环境下跑，跳过（交互性由手动/专项测试覆盖）
-    if "问(" in 码 or "问数字(" in 码:
+    if "询问(" in 码 or "询问数值(" in 码:
         pytest.skip("需要用户输入")
     # 猜数字/随机数结果每次不同，用固定种子的例子才对拍;含随机的只查不报错
     含随机 = "随机数" in 码 or "random" in 码
