@@ -111,6 +111,14 @@ class 调用表达式(表达式):
 
 
 @dataclass(frozen=True, slots=True)
+class 成员访问(表达式):
+    """对象.成员 —— 用于访问导入的 Python 库，例如 数学.sqrt。"""
+    对象: 表达式
+    属性: str
+    跨: 跨度
+
+
+@dataclass(frozen=True, slots=True)
 class 错误表达式(表达式):
     """占位节点 —— 解析失败时填这个，让 AST 仍然可用（D-005）。"""
     跨: 跨度
@@ -174,6 +182,14 @@ class 函数声明(语句):
 @dataclass(frozen=True, slots=True)
 class 返回语句(语句):
     值: 表达式 | None
+    跨: 跨度
+
+
+@dataclass(frozen=True, slots=True)
+class 导入语句(语句):
+    """导入 "模块名" [作为 别名] —— 借用 Python 库。"""
+    模块: str
+    别名: str | None
     跨: 跨度
 
 

@@ -16,7 +16,7 @@ from cnplus.parser.ast import (一元运算, 一元表达式, 二元运算, 二�
                                函数声明, 变量引用, 声明语句, 如果语句, 字符串字面量,
                                小数字面量, 布尔字面量, 循环语句, 整数字面量,
                                程序, 空字面量, 表达式, 表达式语句, 语句,
-                               调用表达式, 赋值语句, 返回语句,
+                               调用表达式, 赋值语句, 返回语句, 导入语句, 成员访问,
                                错误表达式, 错误语句)
 from cnplus.runtime.values import 函数值, 类型名, 显示
 from cnplus.source import 源文件
@@ -135,9 +135,26 @@ class 树遍历后端(后端):
         if isinstance(s, 函数声明):
             环.声明(s.名, 函数值(声明=s, 闭包=环))
             return
+        if isinstance(s, 导入语句):
+            self._导入(s, 环)
+            return
         if isinstance(s, 返回语句):
             raise _返回信号(self._求值(s.值, 环) if s.值 is not None else None)
         raise AssertionError(f"未处理的语句类型 {type(s).__name__}")
+
+    def _导入(self, s: 导入语句, 环: 环境) -> None:
+        """借用 Python 库。模块名是英文，绑定到别名（或末段名）。"""
+        import importlib
+
+        try:
+            模块 = importlib.import_module(s.模块)
+        except Exception as ex:
+            raise 运行时错误(CN0303_类型不匹配,
+                          f"导入 {s.模块!r} 失败：{ex}", s.跨,
+                          解释=f"找不到这个库，或者装的时候出了错",
+                          提示=f"先确认它已安装：pip install {s.模块}") from None
+        名 = s.别名 or s.模块.rpartition(".")[2] or s.模块
+        环.声明(名, 模块)
 
     def _条件(self, 表: 表达式, 环: 环境) -> bool:
         """严格真值 —— 语义约定，故意与 Python 不同。"""
@@ -175,9 +192,21 @@ class 树遍历后端(后端):
             return self._一元(e, 环)
         if isinstance(e, 二元表达式):
             return self._二元(e, 环)
+        if isinstance(e, 成员访问):
+            return self._取成员(e, 环)
         if isinstance(e, 调用表达式):
             return self._调用(e, 环)
         raise AssertionError(f"未处理的表达式类型 {type(e).__name__}")
+
+    def _取成员(self, e: 成员访问, 环: 环境) -> object:
+        对象 = self._求值(e.对象, 环)
+        try:
+            return getattr(对象, e.属性)
+        except AttributeError:
+            raise 运行时错误(CN0302_未声明变量,
+                          f"{e.属性} 在 {类型名(对象)} 里不存在", e.跨,
+                          解释=f"这个东西没有叫「{e.属性}」的成员",
+                          提示=f"检查成员名是不是写错了") from None
 
     def _一元(self, e: 一元表达式, 环: 环境) -> object:
         值 = self._求值(e.操作数, 环)
@@ -346,6 +375,18 @@ class 树遍历后端(后端):
             except _返回信号 as r:
                 return r.值
             return None
+
+        # 导入的 Python 库里的函数 / 类 / 任何可调用对象
+        if callable(被调):
+            try:
+                return 被调(*实参)
+            except 运行时错误:
+                raise
+            except Exception as ex:
+                raise 运行时错误(CN0303_类型不匹配,
+                              f"调用出错：{ex}", e.跨,
+                              解释="这个库的函数被调用时出错了，多半是参数不对",
+                              提示="看看传入的参数类型和数量") from None
 
         raise 运行时错误(CN0305_不可调用,
                       f"{类型名(被调)}不能被调用", e.跨,

@@ -10,6 +10,7 @@ from __future__ import annotations
 import sys
 from pathlib import Path
 
+from cnplus.backends.python_emit import Python转译后端, 编译到文件
 from cnplus.backends.treewalk import 树遍历后端
 from cnplus.checker import 检查 as 静态检查
 from cnplus.diagnostics import 诊断袋
@@ -20,11 +21,13 @@ from cnplus.source import 源文件
 _用法 = """CNplus —— 使用中文撸代码
 
 用法：
-  cnp 运行 <文件.cnp>     执行程序
-  cnp 检查 <文件.cnp>     只检查错误，不执行
-  cnp 词法 <文件.cnp>     打印词元流（调试）
-  cnp 语法树 <文件.cnp>   打印语法树（调试）
-  cnp 版本               显示版本
+  cnp 运行 <文件.cnp>             执行程序（树遍历后端）
+  cnp 运行 --python <文件.cnp>    转译成 Python 再执行（可导入 pip 库）
+  cnp 编译 <文件.cnp>             编译成独立的 .py 文件，可到处运行
+  cnp 检查 <文件.cnp>             只检查错误，不执行
+  cnp 词法 <文件.cnp>             打印词元流（调试）
+  cnp 语法树 <文件.cnp>           打印语法树（调试）
+  cnp 版本                       显示版本
 """
 
 
@@ -41,20 +44,40 @@ def _报诊断(袋: 诊断袋, 源: 源文件) -> None:
         print(袋.渲染全部(源), file=sys.stderr)
 
 
-def 运行(路径: str) -> int:
+def 运行(路径: str, 用转译: bool = False) -> int:
     源 = _读源(路径)
     if 源 is None:
         return 2
     程, 袋 = 解析(源)
+    if not 袋.有错:
+        静态检查(程, 袋)
     if 袋.有错:
         _报诊断(袋, 源)
         print(f"\n发现 {len(袋)} 个问题，未执行。", file=sys.stderr)
         return 1
-    后 = 树遍历后端()
+    后 = Python转译后端() if 用转译 else 树遍历后端()
     后.执行(程, 源, 袋)
     if 袋.有错:
         _报诊断(袋, 源)
         return 1
+    return 0
+
+
+def 编译(路径: str, 目标: str | None = None) -> int:
+    源 = _读源(路径)
+    if 源 is None:
+        return 2
+    程, 袋 = 解析(源)
+    if not 袋.有错:
+        静态检查(程, 袋)
+    if 袋.有错:
+        _报诊断(袋, 源)
+        print(f"\n发现 {len(袋)} 个问题，未编译。", file=sys.stderr)
+        return 1
+    目标路径 = Path(目标) if 目标 else Path(路径).with_suffix(".py")
+    编译到文件(程, 目标路径)
+    print(f"已编译 → {目标路径}")
+    print(f"可独立运行：python3 {目标路径}")
     return 0
 
 
@@ -134,18 +157,33 @@ def main(参数: list[str] | None = None) -> int:
         from cnplus import __version__
         print(f"CNplus {__version__}")
         return 0
+    if 命令 == "编译":
+        if len(参数) < 2:
+            print("错误：编译 需要一个文件名", file=sys.stderr)
+            return 2
+        return 编译(参数[1], 参数[2] if len(参数) > 2 else None)
+    # 运行 支持 --python 转译后端
+    if 命令 == "运行":
+        if len(参数) >= 2 and 参数[1] in ("--python", "-p", "--转译"):
+            if len(参数) < 3:
+                print("错误：运行 --python 需要一个文件名", file=sys.stderr)
+                return 2
+            return 运行(参数[2], 用转译=True)
+        if len(参数) < 2:
+            print("错误：运行 需要一个文件名", file=sys.stderr)
+            return 2
+        return 运行(参数[1])
+    if 命令 not in ("检查", "词法", "语法树", "run", "check"):
+        print(f"错误：不认识的命令 {命令!r}", file=sys.stderr)
+        print(_用法, file=sys.stderr)
+        return 2
     if len(参数) < 2:
         print(f"错误：{命令} 需要一个文件名", file=sys.stderr)
         print(_用法, file=sys.stderr)
         return 2
-    表 = {"运行": 运行, "检查": 检查, "词法": 词法, "语法树": 语法树,
+    表 = {"检查": 检查, "词法": 词法, "语法树": 语法树,
          "run": 运行, "check": 检查}
-    函 = 表.get(命令)
-    if 函 is None:
-        print(f"错误：不认识的命令 {命令!r}", file=sys.stderr)
-        print(_用法, file=sys.stderr)
-        return 2
-    return 函(参数[1])
+    return 表[命令](参数[1])
 
 
 if __name__ == "__main__":
