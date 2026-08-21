@@ -53,6 +53,12 @@ class 种类(Enum):
     大于 = auto()
     大于等于 = auto()
     赋值 = auto()
+    加赋 = auto()      # +=
+    减赋 = auto()      # -=
+    乘赋 = auto()      # *=
+    除赋 = auto()      # /=
+    自增 = auto()      # ++
+    自减 = auto()      # --
     # 标点
     左括号 = auto()
     右括号 = auto()

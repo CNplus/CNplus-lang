@@ -109,6 +109,7 @@ class 调用表达式(表达式):
     被调: 表达式
     实参: tuple[表达式, ...]
     跨: 跨度
+    关键字参数: tuple[tuple[str, 表达式], ...] = ()  # (名, 值) 对
 
 
 @dataclass(frozen=True, slots=True)
@@ -170,6 +171,7 @@ class 赋值语句(语句):
     跨: 跨度
     是外部: bool = False
     名跨: 跨度 | None = None
+    复合: 二元运算 | None = None  # 非空表示 x += y 之类（复合运算符）
 
 
 @dataclass(frozen=True, slots=True)
@@ -200,6 +202,7 @@ class 函数声明(语句):
     主体: tuple[语句, ...]
     跨: 跨度
     形参跨们: tuple[跨度, ...] = ()
+    默认值们: tuple[表达式 | None, ...] = ()  # 与形参一一对应，None=必填
 
 
 @dataclass(frozen=True, slots=True)
@@ -242,6 +245,14 @@ class 索引赋值语句(语句):
     对象: 表达式
     下标: 表达式
     值: 表达式
+    跨: 跨度
+
+
+@dataclass(frozen=True, slots=True)
+class 自增语句(语句):
+    """x++ / x-- —— 变量自增或自减 1。"""
+    名: str
+    增量: int  # +1 或 -1
     跨: 跨度
 
 
