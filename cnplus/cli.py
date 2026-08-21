@@ -11,6 +11,7 @@ import sys
 from pathlib import Path
 
 from cnplus.backends.treewalk import 树遍历后端
+from cnplus.checker import 检查 as 静态检查
 from cnplus.diagnostics import 诊断袋
 from cnplus.lexer.lexer import 扫描
 from cnplus.parser.parser import 解析
@@ -61,7 +62,9 @@ def 检查(路径: str) -> int:
     源 = _读源(路径)
     if 源 is None:
         return 2
-    _, 袋 = 解析(源)
+    程, 袋 = 解析(源)
+    if not 袋.有错:
+        静态检查(程, 袋)
     if len(袋):
         _报诊断(袋, 源)
         print(f"\n发现 {len(袋)} 个问题。", file=sys.stderr)

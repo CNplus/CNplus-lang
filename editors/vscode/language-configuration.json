@@ -1,0 +1,55 @@
+{
+  "comments": {
+    "lineComment": "#"
+  },
+  "brackets": [
+    [
+      "(",
+      ")"
+    ],
+    [
+      "（",
+      "）"
+    ]
+  ],
+  "autoClosingPairs": [
+    {
+      "open": "(",
+      "close": ")"
+    },
+    {
+      "open": "（",
+      "close": "）"
+    },
+    {
+      "open": "\"",
+      "close": "\""
+    },
+    {
+      "open": "'",
+      "close": "'"
+    }
+  ],
+  "surroundingPairs": [
+    [
+      "(",
+      ")"
+    ],
+    [
+      "（",
+      "）"
+    ],
+    [
+      "\"",
+      "\""
+    ],
+    [
+      "'",
+      "'"
+    ]
+  ],
+  "indentationRules": {
+    "increaseIndentPattern": "^\\s*(如果|若|否则|不然|循环|当|函数|定义)\\b.*$",
+    "decreaseIndentPattern": "^\\s*(否则|不然)\\b.*$"
+  }
+}
