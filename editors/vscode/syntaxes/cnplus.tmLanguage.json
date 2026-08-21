@@ -35,19 +35,19 @@
     },
     {
       "name": "keyword.control.conditional.cnplus",
-      "match": "如果|否则|不然|若"
+      "match": "要不然|如果|假如|否则|不然|若"
     },
     {
       "name": "keyword.control.loop.cnplus",
-      "match": "循环|当"
+      "match": "循环|重复|当"
     },
     {
       "name": "keyword.control.flow.cnplus",
-      "match": "返回|返"
+      "match": "返回|给出|返"
     },
     {
       "name": "keyword.declaration.cnplus",
-      "match": "函数|定义|外部|令"
+      "match": "函数|定义|过程|外部|全局|设|令|让"
     },
     {
       "name": "constant.language.boolean.cnplus",
@@ -62,7 +62,7 @@
       "match": "并且|或者|与|或|非"
     },
     {
-      "match": "(?:函数|定义)\\s+([^\\s(（]+)",
+      "match": "(?:函数|定义|过程)\\s+([^\\s(（]+)",
       "captures": {
         "1": {
           "name": "entity.name.function.cnplus"

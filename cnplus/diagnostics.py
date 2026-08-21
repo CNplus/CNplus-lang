@@ -41,11 +41,20 @@ CN0307_重复声明 = "CN0307"
 
 @dataclass(frozen=True, slots=True)
 class 诊断:
+    """一条诊断。
+
+    三层结构，照顾不同水平的读者：
+      消息 —— 精确说明，保留「声明」「布尔值」这类术语，有基础的人一眼看懂
+      解释 —— 同一件事的大白话版本，没学过编程也能懂
+      提示 —— 具体怎么改，尽量给出可直接照抄的代码
+    """
+
     码: str
     消息: str
     跨: 跨度
     级 : 级别 = 级别.错误
     提示: str | None = None
+    解释: str | None = None
 
     def __str__(self) -> str:
         return f"{self.跨.起} {self.级}[{self.码}]: {self.消息}"
@@ -85,8 +94,10 @@ def 渲染(诊: 诊断, 源: 源文件) -> str:
     ]
     if not 诊.跨.单行:
         行.append(f"{前缀空白} | （错误延续至第 {诊.跨.止.行} 行）")
+    if 诊.解释:
+        行.append(f"{前缀空白} = 也就是说: {诊.解释}")
     if 诊.提示:
-        行.append(f"{前缀空白} = 提示: {诊.提示}")
+        行.append(f"{前缀空白} = 这样改: {诊.提示}")
     return "\n".join(行)
 
 
@@ -97,8 +108,9 @@ class 诊断袋:
     条目: list[诊断] = field(default_factory=list)
 
     def 报告(self, 码: str, 消息: str, 跨: 跨度, 提示: str | None = None,
-             级 : 级别 = 级别.错误) -> None:
-        self.条目.append(诊断(码=码, 消息=消息, 跨=跨, 级=级, 提示=提示))
+             级 : 级别 = 级别.错误, 解释: str | None = None) -> None:
+        self.条目.append(
+            诊断(码=码, 消息=消息, 跨=跨, 级=级, 提示=提示, 解释=解释))
 
     @property
     def 有错(self) -> bool:
