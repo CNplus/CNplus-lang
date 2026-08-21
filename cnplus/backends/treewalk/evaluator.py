@@ -11,12 +11,15 @@ from __future__ import annotations
 from cnplus.backends.base import 后端, 运行时错误
 from cnplus.diagnostics import (CN0301_条件必须是布尔, CN0302_未声明变量,
                                 CN0303_类型不匹配, CN0304_除以零, CN0305_不可调用,
-                                CN0306_实参数量不符, CN0307_重复声明, 诊断袋)
+                                CN0306_实参数量不符, CN0307_重复声明,
+                                CN0308_下标越界, CN0309_不可遍历, 诊断袋)
 from cnplus.parser.ast import (一元运算, 一元表达式, 二元运算, 二元表达式,
                                函数声明, 变量引用, 声明语句, 如果语句, 字符串字面量,
                                小数字面量, 布尔字面量, 循环语句, 整数字面量,
                                程序, 空字面量, 表达式, 表达式语句, 语句,
                                调用表达式, 赋值语句, 返回语句, 导入语句, 成员访问,
+                               列表字面量, 字典字面量, 索引访问, 索引赋值语句,
+                               遍历语句, 跳出语句, 继续语句,
                                错误表达式, 错误语句)
 from cnplus.runtime.values import 函数值, 类型名, 显示
 from cnplus.source import 源文件
@@ -26,6 +29,14 @@ class _返回信号(Exception):
     def __init__(self, 值: object) -> None:
         super().__init__("返回")
         self.值 = 值
+
+
+class _跳出信号(Exception):
+    pass
+
+
+class _继续信号(Exception):
+    pass
 
 
 class 环境:
@@ -85,15 +96,8 @@ class 树遍历后端(后端):
             print(行)
 
     def _装内置(self, 环: 环境) -> None:
-        import random
-
-        环.声明("打印", _内置("打印", -1, lambda *a: self._打印(*a)))
-        环.声明("随机数", _内置("随机数", 2, lambda a, b: random.randint(a, b)))
-        环.声明("长度", _内置("长度", 1, lambda a: len(a)))
-        环.声明("类型", _内置("类型", 1, lambda a: 类型名(a)))
-        环.声明("整数", _内置("整数", 1, lambda a: int(a)))
-        环.声明("小数", _内置("小数", 1, lambda a: float(a)))
-        环.声明("文本", _内置("文本", 1, lambda a: 显示(a)))
+        for 名, 元数, 实现 in 内置表(self._打印):
+            环.声明(名, _内置(名, 元数, 实现))
 
     # ---- 语句 ----
     def _执行块(self, 语句们: tuple[语句, ...], 环: 环境) -> None:
@@ -130,7 +134,36 @@ class 树遍历后端(后端):
             return
         if isinstance(s, 循环语句):
             while self._条件(s.条件, 环):
-                self._执行块(s.主体, 环境(环))
+                try:
+                    self._执行块(s.主体, 环境(环))
+                except _继续信号:
+                    continue
+                except _跳出信号:
+                    break
+            return
+        if isinstance(s, 遍历语句):
+            self._遍历(s, 环)
+            return
+        if isinstance(s, 跳出语句):
+            raise _跳出信号
+        if isinstance(s, 继续语句):
+            raise _继续信号
+        if isinstance(s, 索引赋值语句):
+            对象 = self._求值(s.对象, 环)
+            下标 = self._求值(s.下标, 环)
+            值 = self._求值(s.值, 环)
+            try:
+                对象[下标] = 值
+            except TypeError:
+                raise 运行时错误(CN0303_类型不匹配,
+                              f"{类型名(对象)}不能用下标赋值", s.跨,
+                              解释="只有列表和字典能这样改内容",
+                              提示="检查一下这个东西是不是列表或字典") from None
+            except (IndexError, KeyError):
+                raise 运行时错误(CN0308_下标越界,
+                              f"下标 {显示(下标)} 超出范围", s.跨,
+                              解释="这个位置不存在，没法往那里放东西",
+                              提示="列表下标从 0 开始；用「长度(…)」看有多少个") from None
             return
         if isinstance(s, 函数声明):
             环.声明(s.名, 函数值(声明=s, 闭包=环))
@@ -155,6 +188,25 @@ class 树遍历后端(后端):
                           提示=f"先确认它已安装：pip install {s.模块}") from None
         名 = s.别名 or s.模块.rpartition(".")[2] or s.模块
         环.声明(名, 模块)
+
+    def _遍历(self, s: 遍历语句, 环: 环境) -> None:
+        目标 = self._求值(s.可迭代, 环)
+        try:
+            序列 = list(目标)
+        except TypeError:
+            raise 运行时错误(CN0309_不可遍历,
+                          f"{类型名(目标)}不能遍历", s.可迭代.跨,
+                          解释="「对于…在…」需要一串东西，比如列表、字典或文字",
+                          提示="用列表：对于 x 在 [1, 2, 3]") from None
+        for 项 in 序列:
+            局部 = 环境(环)
+            局部.声明(s.变量, 项)
+            try:
+                self._执行块(s.主体, 局部)
+            except _继续信号:
+                continue
+            except _跳出信号:
+                break
 
     def _条件(self, 表: 表达式, 环: 环境) -> bool:
         """严格真值 —— 语义约定，故意与 Python 不同。"""
@@ -192,11 +244,49 @@ class 树遍历后端(后端):
             return self._一元(e, 环)
         if isinstance(e, 二元表达式):
             return self._二元(e, 环)
+        if isinstance(e, 列表字面量):
+            return [self._求值(x, 环) for x in e.元素]
+        if isinstance(e, 字典字面量):
+            出 = {}
+            for 键节点, 值节点 in e.键值对:
+                键 = self._求值(键节点, 环)
+                try:
+                    出[键] = self._求值(值节点, 环)
+                except TypeError:
+                    raise 运行时错误(CN0303_类型不匹配,
+                                  f"{类型名(键)}不能作字典的键", 键节点.跨,
+                                  解释="字典的键得是文字或数字这类固定不变的东西",
+                                  提示='例如 {"名字": "小明"}') from None
+            return 出
+        if isinstance(e, 索引访问):
+            return self._取索引(e, 环)
         if isinstance(e, 成员访问):
             return self._取成员(e, 环)
         if isinstance(e, 调用表达式):
             return self._调用(e, 环)
         raise AssertionError(f"未处理的表达式类型 {type(e).__name__}")
+
+    def _取索引(self, e: 索引访问, 环: 环境) -> object:
+        对象 = self._求值(e.对象, 环)
+        下标 = self._求值(e.下标, 环)
+        try:
+            return 对象[下标]
+        except TypeError:
+            raise 运行时错误(CN0303_类型不匹配,
+                          f"{类型名(对象)}不能用下标取值", e.跨,
+                          解释="只有列表、字典和文字能用 […] 取里面的东西",
+                          提示="检查这个东西的类型") from None
+        except IndexError:
+            长 = len(对象) if hasattr(对象, "__len__") else "?"
+            raise 运行时错误(CN0308_下标越界,
+                          f"下标 {显示(下标)} 超出范围（一共 {长} 个）", e.跨,
+                          解释="列表下标从 0 开始，最大是「长度 - 1」",
+                          提示=f"用「长度(…)」看有多少个") from None
+        except KeyError:
+            raise 运行时错误(CN0308_下标越界,
+                          f"字典里没有键 {显示(下标)}", e.跨,
+                          解释="这个键不在字典里",
+                          提示="检查键名是不是写错了") from None
 
     def _取成员(self, e: 成员访问, 环: 环境) -> object:
         对象 = self._求值(e.对象, 环)
@@ -290,6 +380,13 @@ class 树遍历后端(后端):
             return 左 - 右
         if 运 is 二元运算.乘:
             return 左 * 右
+        if 运 is 二元运算.幂:
+            try:
+                return 左 ** 右
+            except (OverflowError, ZeroDivisionError) as ex:
+                raise 运行时错误(CN0303_类型不匹配,
+                              f"幂运算出错：{ex}", e.跨,
+                              解释="结果太大或没有意义") from None
         if 运 in (二元运算.除, 二元运算.整除, 二元运算.取余):
             if 右 == 0:
                 raise 运行时错误(CN0304_除以零, "除数不能是零", e.跨,
@@ -344,6 +441,16 @@ class 树遍历后端(后端):
         实参 = [self._求值(a, 环) for a in e.实参]
 
         if isinstance(被调, _内置):
+            if 被调.元数 == -2 and not (1 <= len(实参) <= 2):
+                raise 运行时错误(CN0306_实参数量不符,
+                              f"{被调.名} 需要 1 或 2 个参数，给了 {len(实参)} 个", e.跨,
+                              解释=f"{被调.名} 的第二个参数是可选的",
+                              提示="检查括号里用逗号隔开的项")
+            if 被调.元数 == -3 and not (1 <= len(实参) <= 3):
+                raise 运行时错误(CN0306_实参数量不符,
+                              f"{被调.名} 需要 1 到 3 个参数，给了 {len(实参)} 个", e.跨,
+                              解释=f"{被调.名} 后两个参数是可选的",
+                              提示="例如：范围(5)、范围(1, 6)、范围(1, 10, 2)")
             if 被调.元数 >= 0 and len(实参) != 被调.元数:
                 raise 运行时错误(CN0306_实参数量不符,
                               f"{被调.名} 需要 {被调.元数} 个参数，给了 {len(实参)} 个",
@@ -404,3 +511,69 @@ class _内置:
 
     def __repr__(self) -> str:
         return f"<内置函数 {self.名}>"
+
+
+def _范围(*参数):
+    """范围(5) / 范围(1, 6) / 范围(1, 10, 2) —— 返回列表，方便直接遍历。"""
+    return list(range(*[int(x) for x in 参数]))
+
+
+def _求和(序列):
+    if not all(isinstance(x, (int, float)) and not isinstance(x, bool) for x in 序列):
+        raise TypeError("求和只能用于全是数字的列表")
+    return sum(序列)
+
+
+def _分割(文字, 分隔符=None):
+    return 文字.split(分隔符) if 分隔符 is not None else 文字.split()
+
+
+def 内置表(打印实现):
+    """(名, 元数, 实现) 列表。元数 -1 表示任意个，-2 表示 1~2 个，-3 表示 1~3 个。
+
+    这张表是内置函数的唯一来源，两个后端都从这里取，保证行为一致。
+    """
+    import random
+
+    return [
+        # ---- 输出与类型 ----
+        ("打印", -1, 打印实现),
+        ("类型", 1, 类型名),
+        ("文本", 1, 显示),
+        ("整数", 1, lambda a: int(a)),
+        ("小数", 1, lambda a: float(a)),
+        # ---- 通用 ----
+        ("长度", 1, len),
+        ("范围", -3, _范围),
+        ("随机数", 2, lambda a, b: random.randint(int(a), int(b))),
+        # ---- 数学 ----
+        ("绝对值", 1, abs),
+        ("最大", -1, lambda *a: max(a[0]) if len(a) == 1 else max(a)),
+        ("最小", -1, lambda *a: min(a[0]) if len(a) == 1 else min(a)),
+        ("求和", 1, _求和),
+        ("四舍五入", -2, lambda *a: round(*a)),
+        ("平方根", 1, lambda a: a ** 0.5),
+        # ---- 列表 ----
+        ("追加", 2, lambda 表, 项: 表.append(项)),
+        ("插入", 3, lambda 表, 位, 项: 表.insert(int(位), 项)),
+        ("移除", 2, lambda 表, 项: 表.remove(项)),
+        ("弹出", -2, lambda *a: a[0].pop(int(a[1])) if len(a) > 1 else a[0].pop()),
+        ("排序", 1, lambda 表: sorted(表)),
+        ("倒序", 1, lambda 表: list(reversed(表))),
+        ("包含", 2, lambda 容器, 项: 项 in 容器),
+        ("连接", 2, lambda 表, 隔: 隔.join(显示(x) for x in 表)),
+        # ---- 字典 ----
+        ("键们", 1, lambda 字: list(字.keys())),
+        ("值们", 1, lambda 字: list(字.values())),
+        ("有键", 2, lambda 字, 键: 键 in 字),
+        ("删键", 2, lambda 字, 键: 字.pop(键, None)),
+        # ---- 字符串 ----
+        ("分割", -2, _分割),
+        ("替换", 3, lambda 文, 旧, 新: 文.replace(旧, 新)),
+        ("查找", 2, lambda 文, 子: 文.find(子)),
+        ("去空白", 1, lambda 文: 文.strip()),
+        ("大写", 1, lambda 文: 文.upper()),
+        ("小写", 1, lambda 文: 文.lower()),
+        ("开头是", 2, lambda 文, 前: 文.startswith(前)),
+        ("结尾是", 2, lambda 文, 后: 文.endswith(后)),
+    ]

@@ -15,9 +15,17 @@ from cnplus.parser.ast import (二元运算, 二元表达式, 函数声明, 变�
                                布尔字面量, 循环语句, 整数字面量, 程序,
                                空字面量, 表达式, 表达式语句, 语句,
                                调用表达式, 赋值语句, 返回语句, 导入语句, 成员访问,
+                               列表字面量, 字典字面量, 索引访问, 索引赋值语句,
+                               遍历语句, 跳出语句, 继续语句,
                                错误表达式, 错误语句, 一元表达式)
 
-_内置名 = {"打印", "随机数", "长度", "类型", "整数", "小数", "文本"}
+def _取内置名() -> set[str]:
+    """从内置表自动取名单，避免加了内置函数忘了同步（曾漏 8 个）。"""
+    from cnplus.backends.treewalk.evaluator import 内置表
+    return {名 for 名, _, _ in 内置表(lambda *a: None)}
+
+
+_内置名 = _取内置名()
 
 
 def _字面量类型(e: 表达式) -> str | None:
@@ -111,6 +119,22 @@ class 检查器:
             for a in e.实参:
                 self._只查名字(a, 域)
             return
+        if isinstance(e, 索引访问):
+            self._只查名字(e.对象, 域)
+            self._只查名字(e.下标, 域)
+            return
+        if isinstance(e, 成员访问):
+            self._只查名字(e.对象, 域)
+            return
+        if isinstance(e, 列表字面量):
+            for x in e.元素:
+                self._只查名字(x, 域)
+            return
+        if isinstance(e, 字典字面量):
+            for 键, 值 in e.键值对:
+                self._只查名字(键, 域)
+                self._只查名字(值, 域)
+            return
 
     def 检查(self, 程: 程序) -> None:
         顶层 = _作用域()
@@ -173,6 +197,19 @@ class 检查器:
             名 = s.别名 or s.模块.rpartition(".")[2] or s.模块
             域.加(名)
             return
+        if isinstance(s, 遍历语句):
+            self._表达式(s.可迭代, 域)
+            内 = _作用域(域)
+            内.加(s.变量)
+            self._块(s.主体, 内)
+            return
+        if isinstance(s, (跳出语句, 继续语句)):
+            return
+        if isinstance(s, 索引赋值语句):
+            self._表达式(s.对象, 域)
+            self._表达式(s.下标, 域)
+            self._表达式(s.值, 域)
+            return
         if isinstance(s, 返回语句):
             if s.值 is not None:
                 self._表达式(s.值, 域)
@@ -224,6 +261,19 @@ class 检查器:
             return
         if isinstance(e, 成员访问):
             self._表达式(e.对象, 域)
+            return
+        if isinstance(e, 列表字面量):
+            for x in e.元素:
+                self._表达式(x, 域)
+            return
+        if isinstance(e, 字典字面量):
+            for 键, 值 in e.键值对:
+                self._表达式(键, 域)
+                self._表达式(值, 域)
+            return
+        if isinstance(e, 索引访问):
+            self._表达式(e.对象, 域)
+            self._表达式(e.下标, 域)
             return
 
 

@@ -67,6 +67,7 @@ class 二元运算(Enum):
     除 = "/"
     整除 = "//"
     取余 = "%"
+    幂 = "**"
     等于 = "=="
     不等于 = "!="
     小于 = "<"
@@ -115,6 +116,28 @@ class 成员访问(表达式):
     """对象.成员 —— 用于访问导入的 Python 库，例如 数学.sqrt。"""
     对象: 表达式
     属性: str
+    跨: 跨度
+
+
+@dataclass(frozen=True, slots=True)
+class 列表字面量(表达式):
+    """[1, 2, 3]"""
+    元素: tuple[表达式, ...]
+    跨: 跨度
+
+
+@dataclass(frozen=True, slots=True)
+class 字典字面量(表达式):
+    """{"名": "小明", "岁": 18}"""
+    键值对: tuple[tuple[表达式, 表达式], ...]
+    跨: 跨度
+
+
+@dataclass(frozen=True, slots=True)
+class 索引访问(表达式):
+    """名单[0] / 字典["键"]"""
+    对象: 表达式
+    下标: 表达式
     跨: 跨度
 
 
@@ -190,6 +213,35 @@ class 导入语句(语句):
     """导入 "模块名" [作为 别名] —— 借用 Python 库。"""
     模块: str
     别名: str | None
+    跨: 跨度
+
+
+@dataclass(frozen=True, slots=True)
+class 遍历语句(语句):
+    """对于 变量 在 可迭代对象 —— 遍历列表/字典/字符串。"""
+    变量: str
+    可迭代: 表达式
+    主体: tuple[语句, ...]
+    跨: 跨度
+    变量跨: 跨度 | None = None
+
+
+@dataclass(frozen=True, slots=True)
+class 跳出语句(语句):
+    跨: 跨度
+
+
+@dataclass(frozen=True, slots=True)
+class 继续语句(语句):
+    跨: 跨度
+
+
+@dataclass(frozen=True, slots=True)
+class 索引赋值语句(语句):
+    """名单[0] = 值 / 字典["键"] = 值"""
+    对象: 表达式
+    下标: 表达式
+    值: 表达式
     跨: 跨度
 
 

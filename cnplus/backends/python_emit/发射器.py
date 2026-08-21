@@ -24,6 +24,8 @@ from cnplus.parser.ast import (一元运算, 一元表达式, 二元运算, 二�
                                小数字面量, 布尔字面量, 循环语句, 整数字面量,
                                程序, 空字面量, 表达式, 表达式语句, 语句,
                                调用表达式, 赋值语句, 返回语句, 导入语句, 成员访问,
+                               列表字面量, 字典字面量, 索引访问, 索引赋值语句,
+                               遍历语句, 跳出语句, 继续语句,
                                错误表达式, 错误语句)
 
 _运行时路径 = Path(__file__).with_name("运行时源码.py")
@@ -36,6 +38,7 @@ _二元函数 = {
     二元运算.等于: "等于", 二元运算.不等于: "不等于",
     二元运算.小于: "小于", 二元运算.小于等于: "小于等于",
     二元运算.大于: "大于", 二元运算.大于等于: "大于等于",
+    二元运算.幂: "幂",
 }
 
 
@@ -135,7 +138,33 @@ class 发射器:
             名 = s.别名 or s.模块.rpartition(".")[2] or s.模块
             self._行(f"{环名}.声明({名!r}, 导入({s.模块!r}, {行}, {列}), {行}, {列})", 行)
             return
+        if isinstance(s, 遍历语句):
+            self._遍历(s, 环名)
+            return
+        if isinstance(s, 跳出语句):
+            self._行("break", 行)
+            return
+        if isinstance(s, 继续语句):
+            self._行("continue", 行)
+            return
+        if isinstance(s, 索引赋值语句):
+            对象 = self._表达式(s.对象, 环名)
+            下标 = self._表达式(s.下标, 环名)
+            值 = self._表达式(s.值, 环名)
+            self._行(f"设索引({对象}, {下标}, {值}, {行}, {列})", 行)
+            return
         raise AssertionError(f"未处理的语句类型 {type(s).__name__}")
+
+    def _遍历(self, s: 遍历语句, 环名: str) -> None:
+        行, 列 = self._位置(s.跨)
+        可迭代 = self._表达式(s.可迭代, 环名)
+        循环变 = f"_项{self.环计数}"
+        self._行(f"for {循环变} in 遍历项({可迭代}, {行}, {列}):", 行)
+        self.缩进 += 1
+        新环 = self._进块(环名)
+        self._行(f"{新环}.声明({s.变量!r}, {循环变}, {行}, {列})", 行)
+        self._块(s.主体, 新环)
+        self.缩进 -= 1
 
     def _如果(self, s: 如果语句, 环名: str) -> None:
         行, 列 = self._位置(s.跨)
@@ -177,6 +206,18 @@ class 发射器:
             return "True" if e.值 else "False"
         if isinstance(e, 空字面量):
             return "None"
+        if isinstance(e, 列表字面量):
+            元素 = ", ".join(self._表达式(x, 环名) for x in e.元素)
+            return f"[{元素}]"
+        if isinstance(e, 字典字面量):
+            对们 = ", ".join(
+                f"({self._表达式(k, 环名)}, {self._表达式(v, 环名)})"
+                for k, v in e.键值对)
+            return f"造字典([{对们}], {行}, {列})"
+        if isinstance(e, 索引访问):
+            对象 = self._表达式(e.对象, 环名)
+            下标 = self._表达式(e.下标, 环名)
+            return f"取索引({对象}, {下标}, {行}, {列})"
         if isinstance(e, 错误表达式):
             return "None"
         if isinstance(e, 变量引用):
