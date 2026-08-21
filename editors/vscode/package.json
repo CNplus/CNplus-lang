@@ -1,0 +1,80 @@
+{
+  "name": "cnplus",
+  "displayName": "CNplus",
+  "description": "CNplus 中文编程语言支持：语法高亮、实时诊断、一键运行",
+  "version": "0.1.0",
+  "publisher": "cnplus",
+  "engines": {
+    "vscode": "^1.75.0"
+  },
+  "categories": [
+    "Programming Languages"
+  ],
+  "main": "./extension.js",
+  "activationEvents": [
+    "onLanguage:cnplus"
+  ],
+  "contributes": {
+    "languages": [
+      {
+        "id": "cnplus",
+        "aliases": [
+          "CNplus",
+          "cnplus"
+        ],
+        "extensions": [
+          ".cnp"
+        ],
+        "configuration": "./language-configuration.json"
+      }
+    ],
+    "grammars": [
+      {
+        "language": "cnplus",
+        "scopeName": "source.cnplus",
+        "path": "./syntaxes/cnplus.tmLanguage.json"
+      }
+    ],
+    "commands": [
+      {
+        "command": "cnplus.运行当前文件",
+        "title": "CNplus: 运行当前文件",
+        "icon": "$(play)"
+      }
+    ],
+    "menus": {
+      "editor/title/run": [
+        {
+          "command": "cnplus.运行当前文件",
+          "when": "resourceLangId == cnplus",
+          "group": "navigation"
+        }
+      ]
+    },
+    "keybindings": [
+      {
+        "command": "cnplus.运行当前文件",
+        "key": "f5",
+        "when": "resourceLangId == cnplus"
+      }
+    ],
+    "configuration": {
+      "title": "CNplus",
+      "properties": {
+        "cnplus.python路径": {
+          "type": "string",
+          "default": "",
+          "description": "运行 CNplus 的 Python 解释器路径。留空则用 PATH 里的 python3"
+        },
+        "cnplus.启用LSP": {
+          "type": "boolean",
+          "default": true,
+          "description": "启用实时诊断（需要安装 pygls）"
+        }
+      }
+    }
+  },
+  "dependencies": {
+    "vscode-languageclient": "^9.0.1"
+  }
+}
