@@ -36,6 +36,7 @@ class 种类(Enum):
     作为 = auto()
     遍历 = auto()
     每个 = auto()
+    填 = auto()
     跳出 = auto()
     继续 = auto()
     # 运算符

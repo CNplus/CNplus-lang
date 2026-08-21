@@ -26,6 +26,7 @@ from cnplus.parser.ast import (一元运算, 一元表达式, 二元运算, 二�
                                调用表达式, 赋值语句, 返回语句, 导入语句, 成员访问,
                                列表字面量, 字典字面量, 索引访问, 索引赋值语句,
                                遍历语句, 跳出语句, 继续语句, 自增语句,
+                               格式串, 多重声明语句,
                                错误表达式, 错误语句)
 
 _运行时路径 = Path(__file__).with_name("运行时源码.py")
@@ -105,6 +106,11 @@ class 发射器:
             值 = self._表达式(s.值, 环名)
             self._行(f"{环名}.声明({s.名!r}, {值}, {行}, {列})", 行)
             return
+        if isinstance(s, 多重声明语句):
+            值 = self._表达式(s.值, 环名)
+            名列 = "[" + ", ".join(repr(n) for n in s.名们) + "]"
+            self._行(f"解包声明({环名}, {名列}, {值}, {行}, {列})", 行)
+            return
         if isinstance(s, 赋值语句):
             值 = self._表达式(s.值, 环名)
             法 = "赋外层" if s.是外部 else "赋值"
@@ -137,6 +143,13 @@ class 发射器:
             self._函数(s, 环名)
             return
         if isinstance(s, 返回语句):
+            if s.多值:
+                多 = "[" + ", ".join(self._表达式(v, 环名) for v in s.多值) + "]"
+                if self.在函数内:
+                    self._行(f"return {多}", 行)
+                else:
+                    self._行(多, 行)
+                return
             if self.在函数内:
                 值 = self._表达式(s.值, 环名) if s.值 is not None else "None"
                 self._行(f"return {值}", 行)
@@ -223,6 +236,14 @@ class 发射器:
             return "True" if e.值 else "False"
         if isinstance(e, 空字面量):
             return "None"
+        if isinstance(e, 格式串):
+            片段 = []
+            for 段 in e.部分:
+                if isinstance(段, str):
+                    片段.append(repr(段))
+                else:
+                    片段.append(f"显示({self._表达式(段, 环名)})")
+            return "(" + " + ".join(片段) + ")" if 片段 else "''"
         if isinstance(e, 列表字面量):
             元素 = ", ".join(self._表达式(x, 环名) for x in e.元素)
             return f"[{元素}]"
