@@ -18,7 +18,10 @@ def test_关键字别名同种类():
     m = 关键字映射()
     assert m["如果"] is m["若"] is 种类.如果
     assert m["循环"] is m["当"] is 种类.循环
-    assert m["函数"] is m["定义"] is 种类.函数
+    assert m["函数"] is m["定义"] is m["过程"] is 种类.函数
+    assert m["设"] is m["令"] is m["让"] is 种类.令
+    assert m["如果"] is m["假如"] is 种类.如果
+    assert m["循环"] is m["重复"] is 种类.循环
 
 
 def test_归一化保持长度():

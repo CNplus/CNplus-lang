@@ -26,9 +26,11 @@ class 后端(ABC):
 class 运行时错误(Exception):
     """内部信号：由后端捕获转成诊断，不逃到用户面前。"""
 
-    def __init__(self, 码: str, 消息: str, 跨, 提示: str | None = None) -> None:
+    def __init__(self, 码: str, 消息: str, 跨, 提示: str | None = None,
+                 解释: str | None = None) -> None:
         super().__init__(消息)
         self.码 = 码
         self.消息 = 消息
         self.跨 = 跨
         self.提示 = 提示
+        self.解释 = 解释
