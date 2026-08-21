@@ -30,6 +30,10 @@ def 类型名(值: object) -> str:
         return "小数"
     if isinstance(值, str):
         return "字符串"
+    if isinstance(值, list):
+        return "列表"
+    if isinstance(值, dict):
+        return "字典"
     if isinstance(值, 函数值):
         return "函数"
     return type(值).__name__
@@ -46,6 +50,10 @@ def 显示(值: object) -> str:
     if isinstance(值, float):
         # 避免 3.0 显示成 3
         return repr(值)
+    if isinstance(值, list):
+        return "[" + ", ".join(显示(x) for x in 值) + "]"
+    if isinstance(值, dict):
+        return "{" + ", ".join(f"{显示(k)}: {显示(v)}" for k, v in 值.items()) + "}"
     if isinstance(值, 函数值):
         return repr(值)
     return str(值)

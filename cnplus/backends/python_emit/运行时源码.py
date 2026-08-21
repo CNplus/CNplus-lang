@@ -44,6 +44,10 @@ def 类型名(值):
         return "小数"
     if isinstance(值, str):
         return "字符串"
+    if isinstance(值, list):
+        return "列表"
+    if isinstance(值, dict):
+        return "字典"
     if isinstance(值, 函数值):
         return "函数"
     return type(值).__name__
@@ -58,6 +62,10 @@ def 显示(值):
         return "假"
     if isinstance(值, float):
         return repr(值)
+    if isinstance(值, list):
+        return "[" + ", ".join(显示(x) for x in 值) + "]"
+    if isinstance(值, dict):
+        return "{" + ", ".join(f"{显示(k)}: {显示(v)}" for k, v in 值.items()) + "}"
     if isinstance(值, 函数值):
         return f"<函数 {值.名}>"
     return str(值)
@@ -316,6 +324,77 @@ def 导入(模块名, 行, 列):
                       提示=f"先确认它已安装：pip install {模块名}")
 
 
+# ==================== 集合：索引 / 遍历 ====================
+
+class 跳出信号(Exception):
+    pass
+
+
+class 继续信号(Exception):
+    pass
+
+
+def 取索引(对象, 下标, 行, 列):
+    try:
+        return 对象[下标]
+    except TypeError:
+        raise CNplus错误("CN0303", f"{类型名(对象)}不能用下标取值", 行, 列,
+                      解释="只有列表、字典和文字能用 […] 取里面的东西",
+                      提示="检查这个东西的类型")
+    except IndexError:
+        长 = len(对象) if hasattr(对象, "__len__") else "?"
+        raise CNplus错误("CN0308", f"下标 {显示(下标)} 超出范围（一共 {长} 个）", 行, 列,
+                      解释="列表下标从 0 开始，最大是「长度 - 1」",
+                      提示="用「长度(…)」看有多少个")
+    except KeyError:
+        raise CNplus错误("CN0308", f"字典里没有键 {显示(下标)}", 行, 列,
+                      解释="这个键不在字典里", 提示="检查键名是不是写错了")
+
+
+def 设索引(对象, 下标, 值, 行, 列):
+    try:
+        对象[下标] = 值
+    except TypeError:
+        raise CNplus错误("CN0303", f"{类型名(对象)}不能用下标赋值", 行, 列,
+                      解释="只有列表和字典能这样改内容",
+                      提示="检查一下这个东西是不是列表或字典")
+    except (IndexError, KeyError):
+        raise CNplus错误("CN0308", f"下标 {显示(下标)} 超出范围", 行, 列,
+                      解释="这个位置不存在，没法往那里放东西",
+                      提示="列表下标从 0 开始")
+
+
+def 造字典(键值对, 行, 列):
+    出 = {}
+    for 键, 值 in 键值对:
+        try:
+            出[键] = 值
+        except TypeError:
+            raise CNplus错误("CN0303", f"{类型名(键)}不能作字典的键", 行, 列,
+                          解释="字典的键得是文字或数字这类固定不变的东西",
+                          提示='例如 {"名字": "小明"}')
+    return 出
+
+
+def 遍历项(可迭代, 行, 列):
+    try:
+        return list(可迭代)
+    except TypeError:
+        raise CNplus错误("CN0309", f"{类型名(可迭代)}不能遍历", 行, 列,
+                      解释="「对于…在…」需要一串东西，比如列表、字典或文字",
+                      提示="用列表：对于 x 在 [1, 2, 3]")
+
+
+def 幂(左, 右, 行, 列):
+    if not (_是数(左) and _是数(右)):
+        raise CNplus错误("CN0303", f"「**」不能用于{类型名(左)}和{类型名(右)}", 行, 列,
+                      解释="幂运算两边都得是数字", 提示="检查两边的类型")
+    try:
+        return 左 ** 右
+    except (OverflowError, ZeroDivisionError) as ex:
+        raise CNplus错误("CN0303", f"幂运算出错：{ex}", 行, 列, 解释="结果太大或没有意义")
+
+
 # ==================== 内置函数 ====================
 
 def _内置_打印(*值们):
@@ -324,14 +403,56 @@ def _内置_打印(*值们):
 
 import random as _随机库
 
+
+def _范围(*参数):
+    return list(range(*[int(x) for x in 参数]))
+
+
+def _求和(序列):
+    if not all(isinstance(x, (int, float)) and not isinstance(x, bool) for x in 序列):
+        raise TypeError("求和只能用于全是数字的列表")
+    return sum(序列)
+
+
+def _分割(文字, 分隔符=None):
+    return 文字.split(分隔符) if 分隔符 is not None else 文字.split()
+
+
 内置们 = {
     "打印": _内置_打印,
-    "随机数": _随机库.randint,
-    "长度": len,
     "类型": 类型名,
+    "文本": 显示,
     "整数": int,
     "小数": float,
-    "文本": 显示,
+    "长度": len,
+    "范围": _范围,
+    "随机数": lambda a, b: _随机库.randint(int(a), int(b)),
+    "绝对值": abs,
+    "最大": lambda *a: max(a[0]) if len(a) == 1 else max(a),
+    "最小": lambda *a: min(a[0]) if len(a) == 1 else min(a),
+    "求和": _求和,
+    "四舍五入": round,
+    "平方根": lambda a: a ** 0.5,
+    "追加": lambda 表, 项: 表.append(项),
+    "插入": lambda 表, 位, 项: 表.insert(int(位), 项),
+    "移除": lambda 表, 项: 表.remove(项),
+    "弹出": lambda 表, *a: 表.pop(int(a[0])) if a else 表.pop(),
+    "排序": lambda 表: sorted(表),
+    "倒序": lambda 表: list(reversed(表)),
+    "包含": lambda 容器, 项: 项 in 容器,
+    "连接": lambda 表, 隔: 隔.join(显示(x) for x in 表),
+    "键们": lambda 字: list(字.keys()),
+    "值们": lambda 字: list(字.values()),
+    "有键": lambda 字, 键: 键 in 字,
+    "删键": lambda 字, 键: 字.pop(键, None),
+    "分割": _分割,
+    "替换": lambda 文, 旧, 新: 文.replace(旧, 新),
+    "查找": lambda 文, 子: 文.find(子),
+    "去空白": lambda 文: 文.strip(),
+    "大写": lambda 文: 文.upper(),
+    "小写": lambda 文: 文.lower(),
+    "开头是": lambda 文, 前: 文.startswith(前),
+    "结尾是": lambda 文, 后: 文.endswith(后),
 }
 
 
