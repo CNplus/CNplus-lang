@@ -62,7 +62,7 @@ def test_示例两后端输出一致(文件: Path):
     码 = 文件.read_text(encoding="utf-8")
     if "随机数" in 码:
         pytest.skip("含随机数，输出不可复现")
-    if "问(" in 码 or "问数字(" in 码:
+    if "询问(" in 码 or "询问数值(" in 码:
         pytest.skip("需要用户输入，无法在双后端间做无人比对")
     源 = 源文件(码, 文件.name)
     程, 袋 = 解析(源)

@@ -499,20 +499,20 @@ def _分割(文字, 分隔符=None):
 
 
 def _读一行():
-    """返回 None 表示输入结束（EOF）。不能返回空串 —— 会让 问数字 死循环。"""
+    """返回 None 表示输入结束（EOF）。不能返回空串 —— 会让 询问数值 死循环。"""
     try:
         return input()
     except EOFError:
         return None
 
 
-def _问(提示=None):
+def _询问(提示=None):
     if 提示 is not None:
         print(显示(提示), end="", flush=True)
     return _读一行() or ""
 
 
-def _问数字(提示=None):
+def _询问数值(提示=None):
     while True:
         if 提示 is not None:
             print(显示(提示), end="", flush=True)
@@ -531,8 +531,8 @@ def _问数字(提示=None):
 
 内置们 = {
     "打印": _内置_打印,
-    "问": _问,
-    "问数字": _问数字,
+    "询问": _询问,
+    "询问数值": _询问数值,
     "类型": 类型名,
     "文本": 显示,
     "整数": int,
