@@ -32,6 +32,8 @@ class 种类(Enum):
     与 = auto()
     或 = auto()
     非 = auto()
+    导入 = auto()
+    作为 = auto()
     # 运算符
     加 = auto()
     减 = auto()
@@ -51,6 +53,7 @@ class 种类(Enum):
     右括号 = auto()
     逗号 = auto()
     冒号 = auto()
+    点 = auto()
     # 结构
     换行 = auto()
     缩进 = auto()

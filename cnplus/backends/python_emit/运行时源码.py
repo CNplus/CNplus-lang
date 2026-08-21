@@ -1,0 +1,342 @@
+"""CNplus 运行时 —— 转译后端的语义引擎。
+
+生成的 Python 代码每一步运算、每次作用域操作都调回这里，**保证 CNplus
+语义不泄漏**（严格真值、跨类型比较报错、/ 恒为小数、块级作用域）。
+
+这个模块是**自包含**的：不 import cnplus，可以直接内联进生成的文件，
+让生成的 .py 在任意 python3 下独立运行。
+
+抛出的 `CNplus错误` 带 (行,列)，由后端映射回原始 .cnp 的跨度。
+"""
+
+
+class CNplus错误(Exception):
+    def __init__(self, 码, 消息, 行, 列, 提示=None, 解释=None):
+        super().__init__(消息)
+        self.码 = 码
+        self.消息 = 消息
+        self.行 = 行
+        self.列 = 列
+        self.提示 = 提示
+        self.解释 = 解释
+
+
+# ==================== 值 ====================
+
+class 函数值:
+    __slots__ = ("实现", "闭包", "形参们", "名")
+
+    def __init__(self, 实现, 闭包, 形参们, 名=""):
+        self.实现 = 实现
+        self.闭包 = 闭包
+        self.形参们 = 形参们
+        self.名 = 名
+
+
+def 类型名(值):
+    if 值 is None:
+        return "空"
+    if isinstance(值, bool):
+        return "布尔"
+    if isinstance(值, int):
+        return "整数"
+    if isinstance(值, float):
+        return "小数"
+    if isinstance(值, str):
+        return "字符串"
+    if isinstance(值, 函数值):
+        return "函数"
+    return type(值).__name__
+
+
+def 显示(值):
+    if 值 is None:
+        return "空"
+    if 值 is True:
+        return "真"
+    if 值 is False:
+        return "假"
+    if isinstance(值, float):
+        return repr(值)
+    if isinstance(值, 函数值):
+        return f"<函数 {值.名}>"
+    return str(值)
+
+
+def _是数(值):
+    return isinstance(值, (int, float)) and not isinstance(值, bool)
+
+
+def _可比较(左, 右):
+    if 左 is None or 右 is None:
+        return True
+    if isinstance(左, bool) or isinstance(右, bool):
+        return isinstance(左, bool) and isinstance(右, bool)
+    if _是数(左) and _是数(右):
+        return True
+    return type(左) is type(右)
+
+
+# ==================== 环境（块级作用域）====================
+
+class 环境:
+    __slots__ = ("表", "父")
+
+    def __init__(self, 父=None):
+        self.表 = {}
+        self.父 = 父
+
+    def 声明(self, 名, 值, 行=0, 列=0):
+        if 名 in self.表:
+            raise CNplus错误("CN0307", f"变量 {名} 在这个作用域已经声明过了", 行, 列,
+                          解释=f"{名} 这个名字已经有主了，同一层里不能再建一个同名的",
+                          提示=f"想改它的值，直接写 {名} = 新值（不要再写「设」）")
+        self.表[名] = 值
+
+    def 取(self, 名, 行=0, 列=0):
+        环 = self
+        while 环 is not None:
+            if 名 in 环.表:
+                return 环.表[名]
+            环 = 环.父
+        raise CNplus错误("CN0302", f"变量 {名} 还没有声明过", 行, 列,
+                      解释=f"CNplus 不认识 {名}，因为你还没告诉它这个名字代表什么",
+                      提示=f"先用「设」建立它，例如：设 {名} = 0")
+
+    def 赋值(self, 名, 值, 行=0, 列=0):
+        环 = self
+        while 环 is not None:
+            if 名 in 环.表:
+                环.表[名] = 值
+                return
+            环 = 环.父
+        raise CNplus错误("CN0302", f"变量 {名} 还没有声明过", 行, 列,
+                      解释=f"CNplus 不认识 {名}，因为你还没告诉它这个名字代表什么",
+                      提示=f"先用「设」建立它，例如：设 {名} = 0")
+
+    def 赋外层(self, 名, 值, 行=0, 列=0):
+        环 = self.父
+        while 环 is not None:
+            if 名 in 环.表:
+                环.表[名] = 值
+                return
+            环 = 环.父
+        raise CNplus错误("CN0302", f"变量 {名} 还没有声明过", 行, 列,
+                      解释=f"外层也没有 {名} 这个变量，没法用「外部」改它",
+                      提示=f"先用「设」建立它，例如：设 {名} = 0")
+
+
+# ==================== 运算（强制 CNplus 语义）====================
+
+def 条件(值, 行, 列):
+    if not isinstance(值, bool):
+        raise CNplus错误("CN0301", f"条件必须是布尔值（真 或 假），这里是{类型名(值)}", 行, 列,
+                      解释="判断的位置只能放「成立/不成立」的问题，不能直接放一个数或一段文字",
+                      提示="写成一句能回答真/假的话，例如 x > 0、x != 0、名字 == \"小明\"")
+    return 值
+
+
+def 负(值, 行, 列):
+    if isinstance(值, bool) or not _是数(值):
+        raise CNplus错误("CN0303", f"负号只能用于数字，这里是{类型名(值)}", 行, 列,
+                      解释=f"{类型名(值)}没法取负数")
+    return -值
+
+
+def 非(值, 行, 列):
+    if not isinstance(值, bool):
+        raise CNplus错误("CN0303", f"「非」只能用于布尔值（真 或 假），这里是{类型名(值)}", 行, 列,
+                      解释="「非」是把「成立」翻成「不成立」，所以它后面得跟一个真/假",
+                      提示="例如：非 (x > 0)")
+    return not 值
+
+
+def 加(左, 右, 行, 列):
+    if isinstance(左, str) and isinstance(右, str):
+        return 左 + 右
+    if not (_是数(左) and _是数(右)):
+        raise CNplus错误("CN0303", f"「+」不能用于{类型名(左)}和{类型名(右)}", 行, 列,
+                      解释="「+」要么把两个数字相加，要么把两段文字接起来，不能一边数字一边文字",
+                      提示=f"把数字转成文字再接起来：… + 文本({显示(右 if isinstance(左, str) else 左)})")
+    return 左 + 右
+
+
+def _两数(运, 左, 右, 行, 列):
+    if not (_是数(左) and _是数(右)):
+        raise CNplus错误("CN0303", f"「{运}」不能用于{类型名(左)}和{类型名(右)}", 行, 列,
+                      解释=f"「{运}」两边都得是数字",
+                      提示="检查两边的类型")
+    return 左, 右
+
+
+def 减(左, 右, 行, 列):
+    左, 右 = _两数("-", 左, 右, 行, 列)
+    return 左 - 右
+
+
+def 乘(左, 右, 行, 列):
+    if isinstance(左, str) and _是数(右):
+        return 左 * int(右)
+    if isinstance(右, str) and _是数(左):
+        return 右 * int(左)
+    左, 右 = _两数("*", 左, 右, 行, 列)
+    return 左 * 右
+
+
+def 除(左, 右, 行, 列):
+    左, 右 = _两数("/", 左, 右, 行, 列)
+    if 右 == 0:
+        raise CNplus错误("CN0304", "除数不能是零", 行, 列,
+                      解释="东西没法平均分给 0 个人，这在数学上没有答案",
+                      提示="把除数改成非零的数")
+    return 左 / 右  # 语义约定：/ 恒为小数
+
+
+def 整除(左, 右, 行, 列):
+    左, 右 = _两数("//", 左, 右, 行, 列)
+    if 右 == 0:
+        raise CNplus错误("CN0304", "除数不能是零", 行, 列)
+    return 左 // 右
+
+
+def 取余(左, 右, 行, 列):
+    左, 右 = _两数("%", 左, 右, 行, 列)
+    if 右 == 0:
+        raise CNplus错误("CN0304", "除数不能是零", 行, 列)
+    return 左 % 右
+
+
+def 等于(左, 右, 行, 列):
+    if not _可比较(左, 右):
+        raise CNplus错误("CN0303", f"不能比较{类型名(左)}和{类型名(右)}", 行, 列,
+                      解释=f"{类型名(左)}和{类型名(右)}是两类不同的东西，比它们相不相等没有意义",
+                      提示="先用「文本(…)」或「整数(…)」把它们转成同一类再比")
+    return 左 == 右
+
+
+def 不等于(左, 右, 行, 列):
+    return not 等于(左, 右, 行, 列)
+
+
+def _比大小(运, 左, 右, 行, 列):
+    if isinstance(左, str) and isinstance(右, str):
+        pass
+    elif _是数(左) and _是数(右):
+        pass
+    else:
+        raise CNplus错误("CN0303", f"不能比较{类型名(左)}和{类型名(右)}的大小", 行, 列,
+                      解释=f"{类型名(左)}和{类型名(右)}没法排先后",
+                      提示="数字跟数字比，文字跟文字比")
+    return 左, 右
+
+
+def 小于(左, 右, 行, 列):
+    左, 右 = _比大小("<", 左, 右, 行, 列)
+    return 左 < 右
+
+
+def 小于等于(左, 右, 行, 列):
+    左, 右 = _比大小("<=", 左, 右, 行, 列)
+    return 左 <= 右
+
+
+def 大于(左, 右, 行, 列):
+    左, 右 = _比大小(">", 左, 右, 行, 列)
+    return 左 > 右
+
+
+def 大于等于(左, 右, 行, 列):
+    左, 右 = _比大小(">=", 左, 右, 行, 列)
+    return 左 >= 右
+
+
+def 与(左, 右, 行, 列):
+    if not isinstance(左, bool):
+        raise CNplus错误("CN0303", f"「与」两侧必须是布尔值（真 或 假），这里是{类型名(左)}", 行, 列,
+                      解释="「与」用来连接两个「成立/不成立」的判断",
+                      提示="例如：x > 0 与 y > 0")
+    if not 左:
+        return False  # 短路
+    if not isinstance(右, bool):
+        raise CNplus错误("CN0303", f"「与」两侧必须是布尔值（真 或 假），这里是{类型名(右)}", 行, 列,
+                      解释="「与」用来连接两个「成立/不成立」的判断",
+                      提示="例如：x > 0 与 y > 0")
+    return 右
+
+
+def 或(左, 右, 行, 列):
+    if not isinstance(左, bool):
+        raise CNplus错误("CN0303", f"「或」两侧必须是布尔值（真 或 假），这里是{类型名(左)}", 行, 列,
+                      解释="「或」用来连接两个「成立/不成立」的判断",
+                      提示="例如：x > 0 或 y > 0")
+    if 左:
+        return True  # 短路
+    if not isinstance(右, bool):
+        raise CNplus错误("CN0303", f"「或」两侧必须是布尔值（真 或 假），这里是{类型名(右)}", 行, 列,
+                      解释="「或」用来连接两个「成立/不成立」的判断",
+                      提示="例如：x > 0 或 y > 0")
+    return 右
+
+
+# ==================== 调用 / 导入 / 成员 ====================
+
+def 调用(被调, 实参们, 行, 列):
+    if isinstance(被调, 函数值):
+        if len(实参们) != len(被调.形参们):
+            raise CNplus错误("CN0306", f"{被调.名} 需要 {len(被调.形参们)} 个参数，给了 {len(实参们)} 个", 行, 列,
+                          解释=f"你定义 {被调.名} 时写了 {len(被调.形参们)} 个位置，调用时要一一对上",
+                          提示=f"改成 {被调.名}(" + ", ".join(被调.形参们) + ")")
+        局部 = 环境(被调.闭包)
+        for 名, 值 in zip(被调.形参们, 实参们):
+            局部.表[名] = 值
+        return 被调.实现(局部)
+    if callable(被调):
+        return 被调(*实参们)
+    raise CNplus错误("CN0305", f"{类型名(被调)}不能被调用", 行, 列,
+                  解释="名字后面加括号表示「执行它」，但只有函数能被执行",
+                  提示="检查是不是名字写错了，或者本来不该加括号")
+
+
+def 取成员(对象, 属性, 行, 列):
+    try:
+        return getattr(对象, 属性)
+    except AttributeError:
+        raise CNplus错误("CN0302", f"{属性} 在 {类型名(对象)} 里不存在", 行, 列,
+                      解释=f"这个东西没有叫「{属性}」的成员",
+                      提示="检查成员名是不是写错了")
+
+
+def 导入(模块名, 行, 列):
+    import importlib
+    try:
+        return importlib.import_module(模块名)
+    except Exception as ex:
+        raise CNplus错误("CN0303", f"导入 {模块名!r} 失败：{ex}", 行, 列,
+                      解释="找不到这个库，或者装的时候出了错",
+                      提示=f"先确认它已安装：pip install {模块名}")
+
+
+# ==================== 内置函数 ====================
+
+def _内置_打印(*值们):
+    print(" ".join(显示(v) for v in 值们))
+
+
+import random as _随机库
+
+内置们 = {
+    "打印": _内置_打印,
+    "随机数": _随机库.randint,
+    "长度": len,
+    "类型": 类型名,
+    "整数": int,
+    "小数": float,
+    "文本": 显示,
+}
+
+
+def 建全局环境():
+    _全局 = 环境()
+    for 名, 值 in 内置们.items():
+        _全局.表[名] = 值
+    return _全局
