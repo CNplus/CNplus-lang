@@ -34,8 +34,8 @@ class 种类(Enum):
     非 = auto()
     导入 = auto()
     作为 = auto()
-    对于 = auto()
-    在 = auto()
+    遍历 = auto()
+    每个 = auto()
     跳出 = auto()
     继续 = auto()
     # 运算符
