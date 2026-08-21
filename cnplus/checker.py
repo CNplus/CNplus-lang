@@ -59,6 +59,27 @@ class 检查器:
     def __init__(self, 袋: 诊断袋) -> None:
         self.袋 = 袋
 
+    def _只查名字(self, e: 表达式, 域: _作用域) -> None:
+        """短路右侧：只检查变量是否声明，不做「必然出错」判断。"""
+        if isinstance(e, 变量引用):
+            if not 域.有(e.名):
+                self.袋.报告(CN0302_未声明变量,
+                          f"变量 {e.名} 还没有声明过", e.跨,
+                          提示=f"先写 令 {e.名} = ... 来声明它")
+            return
+        if isinstance(e, 一元表达式):
+            self._只查名字(e.操作数, 域)
+            return
+        if isinstance(e, 二元表达式):
+            self._只查名字(e.左, 域)
+            self._只查名字(e.右, 域)
+            return
+        if isinstance(e, 调用表达式):
+            self._只查名字(e.被调, 域)
+            for a in e.实参:
+                self._只查名字(a, 域)
+            return
+
     def 检查(self, 程: 程序) -> None:
         顶层 = _作用域()
         for 名 in _内置名:
@@ -140,6 +161,11 @@ class 检查器:
             return
         if isinstance(e, 二元表达式):
             self._表达式(e.左, 域)
+            # 与/或 短路：右侧可能永不执行，只查变量名不查「必然出错」类问题，
+            # 否则 `真 或 1 / 0` 会被误报。宁可漏报也不误报。
+            if e.运算 in (二元运算.与, 二元运算.或):
+                self._只查名字(e.右, 域)
+                return
             self._表达式(e.右, 域)
             # 除以字面量零 —— 能百分百确定
             if e.运算 in (二元运算.除, 二元运算.整除, 二元运算.取余):
