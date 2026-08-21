@@ -143,6 +143,13 @@ class 索引访问(表达式):
 
 
 @dataclass(frozen=True, slots=True)
+class 格式串(表达式):
+    """填"你好，{名字}" —— 部分是 str（原文）或 表达式（要填的空）交替。"""
+    部分: tuple[object, ...]  # 每项是 str 或 表达式
+    跨: 跨度
+
+
+@dataclass(frozen=True, slots=True)
 class 错误表达式(表达式):
     """占位节点 —— 解析失败时填这个，让 AST 仍然可用（D-005）。"""
     跨: 跨度
@@ -162,6 +169,14 @@ class 声明语句(语句):
     值: 表达式
     跨: 跨度
     名跨: 跨度 | None = None
+
+
+@dataclass(frozen=True, slots=True)
+class 多重声明语句(语句):
+    """设 甲, 乙 = 值 —— 解包，值必须是长度匹配的列表。"""
+    名们: tuple[str, ...]
+    值: 表达式
+    跨: 跨度
 
 
 @dataclass(frozen=True, slots=True)
@@ -209,6 +224,7 @@ class 函数声明(语句):
 class 返回语句(语句):
     值: 表达式 | None
     跨: 跨度
+    多值: tuple[表达式, ...] = ()  # 非空表示 返回 甲, 乙（多返回值）
 
 
 @dataclass(frozen=True, slots=True)

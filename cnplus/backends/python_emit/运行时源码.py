@@ -305,6 +305,19 @@ def 自增值(旧, 增量, 行, 列):
     return 旧 + 增量
 
 
+def 解包声明(环, 名们, 值, 行, 列):
+    if not isinstance(值, (list, tuple)):
+        raise CNplus错误("CN0303", f"右边是{类型名(值)}，没法拆给 {len(名们)} 个变量", 行, 列,
+                      解释="要拆开赋值，右边得是一个列表（或多返回值）",
+                      提示="例如：设 甲, 乙 = [1, 2]")
+    if len(值) != len(名们):
+        raise CNplus错误("CN0306", f"左边有 {len(名们)} 个变量，右边有 {len(值)} 个值", 行, 列,
+                      解释="拆开赋值时两边数量必须一样多",
+                      提示=f"左边写 {len(值)} 个变量，或让右边给 {len(名们)} 个值")
+    for 名, v in zip(名们, 值):
+        环.声明(名, v, 行, 列)
+
+
 def _绑定(被调, 实参们, 关键字们, 行, 列):
     形参 = 被调.形参们
     默认 = 被调.默认们
@@ -485,8 +498,41 @@ def _分割(文字, 分隔符=None):
     return 文字.split(分隔符) if 分隔符 is not None else 文字.split()
 
 
+def _读一行():
+    """返回 None 表示输入结束（EOF）。不能返回空串 —— 会让 问数字 死循环。"""
+    try:
+        return input()
+    except EOFError:
+        return None
+
+
+def _问(提示=None):
+    if 提示 is not None:
+        print(显示(提示), end="", flush=True)
+    return _读一行() or ""
+
+
+def _问数字(提示=None):
+    while True:
+        if 提示 is not None:
+            print(显示(提示), end="", flush=True)
+        行 = _读一行()
+        if 行 is None:
+            # 抛 EOFError，让后端用行映射定位到真正的调用处
+            raise EOFError("还需要一个数字，但输入已经结束了")
+        试 = 行.strip()
+        try:
+            if "." in 试:
+                return float(试)
+            return int(试)
+        except ValueError:
+            print(f"「{试}」不是数字，请重新输入。", flush=True)
+
+
 内置们 = {
     "打印": _内置_打印,
+    "问": _问,
+    "问数字": _问数字,
     "类型": 类型名,
     "文本": 显示,
     "整数": int,

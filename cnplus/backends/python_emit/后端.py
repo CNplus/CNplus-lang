@@ -52,6 +52,12 @@ class Python转译后端(后端):
         # Python 库抛的异常：用行映射尽力定位回 CNplus
         cnplus行 = self._定位(e, 文件名, 行映射)
         跨 = 源.跨度于行列(cnplus行, 1) if cnplus行 else 源.跨度于(0, 1)
+        # 输入结束是 CNplus 自己的语义错误，不是库的错
+        if isinstance(e, EOFError):
+            袋.报告("CN0310", str(e) or "输入已经结束了", 跨,
+                  解释="程序还想要输入，可是没有更多输入了",
+                  提示="交互运行时直接输入；用管道喂数据时检查是不是给少了")
+            return
         袋.报告("CN9001", f"调用 Python 库时出错：{type(e).__name__}: {e}", 跨,
               解释="这个错误来自你导入的 Python 库，不是 CNplus 本身",
               提示="检查传给库的参数类型和数量，或参考该库的文档")

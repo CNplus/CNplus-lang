@@ -12,7 +12,8 @@ from cnplus.backends.base import 后端, 运行时错误
 from cnplus.diagnostics import (CN0301_条件必须是布尔, CN0302_未声明变量,
                                 CN0303_类型不匹配, CN0304_除以零, CN0305_不可调用,
                                 CN0306_实参数量不符, CN0307_重复声明,
-                                CN0308_下标越界, CN0309_不可遍历, 诊断袋)
+                                CN0308_下标越界, CN0309_不可遍历,
+                                CN0310_输入结束, 诊断袋)
 from cnplus.parser.ast import (一元运算, 一元表达式, 二元运算, 二元表达式,
                                函数声明, 变量引用, 声明语句, 如果语句, 字符串字面量,
                                小数字面量, 布尔字面量, 循环语句, 整数字面量,
@@ -20,6 +21,7 @@ from cnplus.parser.ast import (一元运算, 一元表达式, 二元运算, 二�
                                调用表达式, 赋值语句, 返回语句, 导入语句, 成员访问,
                                列表字面量, 字典字面量, 索引访问, 索引赋值语句,
                                遍历语句, 跳出语句, 继续语句, 自增语句,
+                               格式串, 多重声明语句,
                                错误表达式, 错误语句)
 from cnplus.runtime.values import 函数值, 类型名, 显示
 from cnplus.source import 源文件
@@ -72,9 +74,10 @@ class 环境:
 class 树遍历后端(后端):
     名称 = "树遍历"
 
-    def __init__(self, 输出=None) -> None:
+    def __init__(self, 输出=None, 输入=None) -> None:
         self.输出行: list[str] = []
         self._输出回调 = 输出
+        self._输入回调 = 输入
 
     # ---- 入口 ----
     def 执行(self, 程: 程序, 源: 源文件, 袋: 诊断袋) -> None:
@@ -96,7 +99,7 @@ class 树遍历后端(后端):
             print(行)
 
     def _装内置(self, 环: 环境) -> None:
-        for 名, 元数, 实现 in 内置表(self._打印):
+        for 名, 元数, 实现 in 内置表(self._打印, self._输入回调):
             环.声明(名, _内置(名, 元数, 实现))
 
     # ---- 语句 ----
@@ -195,8 +198,32 @@ class 树遍历后端(后端):
             self._导入(s, 环)
             return
         if isinstance(s, 返回语句):
+            if s.多值:
+                raise _返回信号([self._求值(v, 环) for v in s.多值])
             raise _返回信号(self._求值(s.值, 环) if s.值 is not None else None)
+        if isinstance(s, 多重声明语句):
+            值 = self._求值(s.值, 环)
+            self._解包声明(s, 值, 环)
+            return
         raise AssertionError(f"未处理的语句类型 {type(s).__name__}")
+
+    def _解包声明(self, s: 多重声明语句, 值: object, 环: 环境) -> None:
+        if not isinstance(值, (list, tuple)):
+            raise 运行时错误(CN0303_类型不匹配,
+                          f"右边是{类型名(值)}，没法拆给 {len(s.名们)} 个变量", s.跨,
+                          解释="要拆开赋值，右边得是一个列表（或多返回值）",
+                          提示="例如：设 甲, 乙 = [1, 2]")
+        if len(值) != len(s.名们):
+            raise 运行时错误(CN0306_实参数量不符,
+                          f"左边有 {len(s.名们)} 个变量，右边有 {len(值)} 个值", s.跨,
+                          解释="拆开赋值时两边数量必须一样多",
+                          提示=f"左边写 {len(值)} 个变量，或让右边给 {len(s.名们)} 个值")
+        for 名, v in zip(s.名们, 值):
+            if 环.有本地(名):
+                raise 运行时错误(CN0307_重复声明,
+                              f"变量 {名} 在这个作用域已经声明过了", s.跨,
+                              解释=f"{名} 已经有主了", 提示=f"改值直接写 {名} = 新值")
+            环.声明(名, v)
 
     def _导入(self, s: 导入语句, 环: 环境) -> None:
         """借用 Python 库。模块名是英文，绑定到别名（或末段名）。"""
@@ -253,6 +280,14 @@ class 树遍历后端(后端):
             return e.值
         if isinstance(e, 空字面量):
             return None
+        if isinstance(e, 格式串):
+            出 = []
+            for 段 in e.部分:
+                if isinstance(段, str):
+                    出.append(段)
+                else:
+                    出.append(显示(self._求值(段, 环)))
+            return "".join(出)
         if isinstance(e, 错误表达式):
             return None
         if isinstance(e, 变量引用):
@@ -500,6 +535,11 @@ class 树遍历后端(后端):
                               f"内置函数 {被调.名} 不支持「名字=值」参数", e.跨,
                               解释="内置函数的参数按位置传",
                               提示=f"直接写 {被调.名}(值1, 值2)")
+            if 被调.元数 == -4 and len(实参) > 1:
+                raise 运行时错误(CN0306_实参数量不符,
+                              f"{被调.名} 最多 1 个参数（提示语），给了 {len(实参)} 个", e.跨,
+                              解释=f"{被调.名}() 直接问，{被调.名}(\"提示\") 带提示语",
+                              提示=f'例如：{被调.名}("请输入名字：")')
             if 被调.元数 == -2 and not (1 <= len(实参) <= 2):
                 raise 运行时错误(CN0306_实参数量不符,
                               f"{被调.名} 需要 1 或 2 个参数，给了 {len(实参)} 个", e.跨,
@@ -520,6 +560,11 @@ class 树遍历后端(后端):
                 return 被调.实现(*实参)
             except 运行时错误:
                 raise
+            except EOFError as ex:
+                # 内置函数没有 span，在调用点补上
+                raise 运行时错误(CN0310_输入结束, str(ex), e.跨,
+                              解释="程序还想要输入，可是没有更多输入了",
+                              提示="交互运行时直接输入；用管道喂数据时检查是不是给少了") from None
             except Exception as ex:
                 raise 运行时错误(CN0303_类型不匹配,
                               f"调用 {被调.名} 出错：{ex}", e.跨) from None
@@ -617,16 +662,57 @@ def _分割(文字, 分隔符=None):
     return 文字.split(分隔符) if 分隔符 is not None else 文字.split()
 
 
-def 内置表(打印实现):
+def _问(提示, 读一行):
+    """向用户要一段文字。提示可省略。
+
+    返回 None 表示输入已结束（EOF），调用方必须处理，
+    否则会陷入死循环 —— 这是真实踩过的坑。
+    """
+    if 提示 is not None:
+        print(显示(提示), end="", flush=True)
+    return 读一行()
+
+
+def _问数字(提示, 读一行):
+    """向用户要一个数字，输错会一直问到对为止。
+
+    输入结束（EOF）时不能继续重试，否则死循环。抛 EOFError，
+    由 _调用 就地包装成带 span 的诊断（内置函数自己没有 span）。
+    """
+    while True:
+        文 = _问(提示, 读一行)
+        if 文 is None:
+            raise EOFError("还需要一个数字，但输入已经结束了")
+        试 = 文.strip()
+        try:
+            if "." in 试:
+                return float(试)
+            return int(试)
+        except ValueError:
+            print(f"「{试}」不是数字，请重新输入。", flush=True)
+
+
+def 内置表(打印实现, 读一行=None):
     """(名, 元数, 实现) 列表。元数 -1 表示任意个，-2 表示 1~2 个，-3 表示 1~3 个。
 
     这张表是内置函数的唯一来源，两个后端都从这里取，保证行为一致。
+    读一行 可注入（测试用假输入）；默认从标准输入读。
     """
     import random
+
+    if 读一行 is None:
+        def 读一行():
+            try:
+                return input()
+            except EOFError:
+                return None  # None = 输入结束，不能当空串
 
     return [
         # ---- 输出与类型 ----
         ("打印", -1, 打印实现),
+        # ---- 输入 ----
+        ("问", -4, lambda *a: (_问(a[0] if a else None, 读一行) or "")),
+        ("问数字", -4, lambda *a: _问数字(a[0] if a else None, 读一行)),
         ("类型", 1, 类型名),
         ("文本", 1, 显示),
         ("整数", 1, lambda a: int(a)),

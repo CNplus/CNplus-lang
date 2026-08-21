@@ -18,23 +18,61 @@ from cnplus.source import 源文件
 示例目录 = Path(__file__).parent.parent / "示例"
 
 
-def 跑(码: str, 名: str = "t.cnp"):
+def 跑(码: str, 名: str = "t.cnp", 输入行=None):
+    """输入行：预设的输入序列（列表）。用完返回 None（模拟 EOF）。"""
     源 = 源文件(码, 名)
     程, 袋 = 解析(源)
     if not 袋.有错:
         检查(程, 袋)
     输出 = []
+    喂 = None
+    if 输入行 is not None:
+        剩 = list(输入行)
+        def 喂():
+            return 剩.pop(0) if 剩 else None
     if not 袋.有错:
-        树遍历后端(输出=输出.append).执行(程, 源, 袋)
+        树遍历后端(输出=输出.append, 输入=喂).执行(程, 源, 袋)
     return 输出, 袋, 源
+
+
+# 需要用户输入的示例：喂给它足够的假输入
+_预设输入 = {
+    "07-猜数字.cnp": [str(n) for n in range(1, 101)],  # 逐个猜，必中
+    "15-待办清单.cnp": ["1", "4", "0"],                 # 看清单 → 统计 → 退出
+}
 
 
 @pytest.mark.parametrize("文件", sorted(示例目录.glob("*.cnp")), ids=lambda p: p.stem)
 def test_示例都能跑(文件: Path):
     """教程引用的每个示例都必须无错运行。"""
-    输出, 袋, 源 = 跑(文件.read_text(encoding="utf-8"), 文件.name)
+    输出, 袋, 源 = 跑(文件.read_text(encoding="utf-8"), 文件.name,
+                  输入行=_预设输入.get(文件.name))
     assert not 袋.有错, f"{文件.name} 出错：\n{袋.渲染全部(源)}"
     assert 输出, f"{文件.name} 没有任何输出"
+
+
+@pytest.mark.parametrize("文件", sorted(示例目录.glob("*.cnp")), ids=lambda p: p.stem)
+def test_示例两后端输出一致(文件: Path):
+    """每个示例在树遍历后端和转译后端的输出必须逐字一致（防语义泄漏）。
+
+    用了「随机数」的示例天生每次结果不同，无法做输出比对，跳过 ——
+    它们的一致性由 tests/ 里的定值测试保证。
+    """
+    from cnplus.backends.python_emit import Python转译后端
+    码 = 文件.read_text(encoding="utf-8")
+    if "随机数" in 码:
+        pytest.skip("含随机数，输出不可复现")
+    if "问(" in 码 or "问数字(" in 码:
+        pytest.skip("需要用户输入，无法在双后端间做无人比对")
+    源 = 源文件(码, 文件.name)
+    程, 袋 = 解析(源)
+    检查(程, 袋)
+    assert not 袋.有错
+    树: list[str] = []
+    树遍历后端(输出=树.append).执行(程, 源, 袋)
+    译: list[str] = []
+    Python转译后端(输出=译.append).执行(程, 源, 袋)
+    assert 树 == 译, f"{文件.name} 两后端输出不一致\n树:{树}\n译:{译}"
 
 
 def test_示例覆盖教程提到的编号():
