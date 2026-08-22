@@ -356,10 +356,26 @@ def 调用(被调, 实参们, 关键字们, 行, 列):
         return 被调.实现(局部)
     if callable(被调):
         kw = {名: 值 for 名, 值 in 关键字们}
-        return 被调(*实参们, **kw)
+        try:
+            return 被调(*实参们, **kw)
+        except CNplus错误:
+            raise
+        except EOFError:
+            raise
+        except Exception as ex:
+            # 库/内置抛的错也包成 CNplus错误，这样「捕获」能接住 ——
+            # 报错文本直接用异常消息，与树遍历后端一致
+            raise CNplus错误("CN0303", str(ex), 行, 列) from None
     raise CNplus错误("CN0305", f"{类型名(被调)}不能被调用", 行, 列,
                   解释="名字后面加括号表示「执行它」，但只有函数能被执行",
                   提示="检查是不是名字写错了，或者本来不该加括号")
+
+
+def 抛出(说明, 行, 列):
+    """主动制造一个错误（对应 CNplus 的「抛出」）。"""
+    raise CNplus错误("CN0311", 显示(说明), 行, 列,
+                  解释="这是程序自己用「抛出」制造的错误",
+                  提示="用「尝试 … 捕获」可以接住它")
 
 
 _可点方法 = {
@@ -529,14 +545,28 @@ def _询问数值(提示=None):
             print(f"「{试}」不是数字，请重新输入。", flush=True)
 
 
+def _转整数(a):
+    try:
+        return int(a)
+    except (ValueError, TypeError):
+        raise ValueError(f"没法把 {显示(a)} 变成整数") from None
+
+
+def _转小数(a):
+    try:
+        return float(a)
+    except (ValueError, TypeError):
+        raise ValueError(f"没法把 {显示(a)} 变成小数") from None
+
+
 内置们 = {
     "打印": _内置_打印,
     "询问": _询问,
     "询问数值": _询问数值,
     "类型": 类型名,
     "文本": 显示,
-    "整数": int,
-    "小数": float,
+    "整数": _转整数,
+    "小数": _转小数,
     "长度": len,
     "范围": _范围,
     "随机数": lambda a, b: _随机库.randint(int(a), int(b)),

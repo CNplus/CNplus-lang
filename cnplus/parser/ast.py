@@ -273,6 +273,29 @@ class 自增语句(语句):
 
 
 @dataclass(frozen=True, slots=True)
+class 尝试语句(语句):
+    """尝试 … 捕获 错 … 最后 …
+
+    捕获变量 为 None 表示 `捕获` 后面没写变量名（不关心错误内容）。
+    捕获体 为 None 表示没有 捕获 段（只有 最后）。
+    最后体 为 None 表示没有 最后 段。
+    """
+    主体: tuple[语句, ...]
+    捕获变量: str | None
+    捕获体: tuple[语句, ...] | None
+    最后体: tuple[语句, ...] | None
+    跨: 跨度
+    捕获变量跨: 跨度 | None = None
+
+
+@dataclass(frozen=True, slots=True)
+class 抛出语句(语句):
+    """抛出 "出错说明" —— 主动制造一个错误。"""
+    值: 表达式
+    跨: 跨度
+
+
+@dataclass(frozen=True, slots=True)
 class 错误语句(语句):
     """占位节点 —— 语句解析失败时填这个。"""
     跨: 跨度

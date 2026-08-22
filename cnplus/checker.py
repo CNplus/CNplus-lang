@@ -17,7 +17,7 @@ from cnplus.parser.ast import (二元运算, 二元表达式, 函数声明, 变�
                                调用表达式, 赋值语句, 返回语句, 导入语句, 成员访问,
                                列表字面量, 字典字面量, 索引访问, 索引赋值语句,
                                遍历语句, 跳出语句, 继续语句, 自增语句,
-                               格式串, 多重声明语句,
+                               格式串, 多重声明语句, 尝试语句, 抛出语句,
                                错误表达式, 错误语句, 一元表达式)
 
 def _取内置名() -> set[str]:
@@ -209,6 +209,19 @@ class 检查器:
             self._表达式(s.值, 域)
             for 名 in s.名们:
                 域.加(名)
+            return
+        if isinstance(s, 尝试语句):
+            self._块(s.主体, _作用域(域))
+            if s.捕获体 is not None:
+                捕获域 = _作用域(域)
+                if s.捕获变量 is not None:
+                    捕获域.加(s.捕获变量)
+                self._块(s.捕获体, 捕获域)
+            if s.最后体 is not None:
+                self._块(s.最后体, _作用域(域))
+            return
+        if isinstance(s, 抛出语句):
+            self._表达式(s.值, 域)
             return
         if isinstance(s, 导入语句):
             # 模块名不是变量；只把别名登记进作用域，之后就能用 别名.成员

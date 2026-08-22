@@ -26,7 +26,7 @@ from cnplus.parser.ast import (一元运算, 一元表达式, 二元运算, 二�
                                调用表达式, 赋值语句, 返回语句, 导入语句, 成员访问,
                                列表字面量, 字典字面量, 索引访问, 索引赋值语句,
                                遍历语句, 跳出语句, 继续语句, 自增语句,
-                               格式串, 多重声明语句,
+                               格式串, 多重声明语句, 尝试语句, 抛出语句,
                                错误表达式, 错误语句)
 
 _运行时路径 = Path(__file__).with_name("运行时源码.py")
@@ -176,7 +176,35 @@ class 发射器:
             值 = self._表达式(s.值, 环名)
             self._行(f"设索引({对象}, {下标}, {值}, {行}, {列})", 行)
             return
+        if isinstance(s, 尝试语句):
+            self._尝试(s, 环名)
+            return
+        if isinstance(s, 抛出语句):
+            值 = self._表达式(s.值, 环名)
+            self._行(f"抛出({值}, {行}, {列})", 行)
+            return
         raise AssertionError(f"未处理的语句类型 {type(s).__name__}")
+
+    def _尝试(self, s: 尝试语句, 环名: str) -> None:
+        行, 列 = self._位置(s.跨)
+        self._行("try:", 行)
+        self.缩进 += 1
+        self._块(s.主体, self._进块(环名))
+        self.缩进 -= 1
+        if s.捕获体 is not None:
+            # 只捕 CNplus 的错误（CNplus错误），不吞 Python 内部异常
+            self._行("except CNplus错误 as _错:", 行)
+            self.缩进 += 1
+            捕获环 = self._进块(环名)
+            if s.捕获变量 is not None:
+                self._行(f"{捕获环}.声明({s.捕获变量!r}, _错.消息, {行}, {列})", 行)
+            self._块(s.捕获体, 捕获环)
+            self.缩进 -= 1
+        if s.最后体 is not None:
+            self._行("finally:", 行)
+            self.缩进 += 1
+            self._块(s.最后体, self._进块(环名))
+            self.缩进 -= 1
 
     def _遍历(self, s: 遍历语句, 环名: str) -> None:
         行, 列 = self._位置(s.跨)
