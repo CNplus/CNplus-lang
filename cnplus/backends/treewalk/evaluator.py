@@ -13,7 +13,7 @@ from cnplus.diagnostics import (CN0301_条件必须是布尔, CN0302_未声明�
                                 CN0303_类型不匹配, CN0304_除以零, CN0305_不可调用,
                                 CN0306_实参数量不符, CN0307_重复声明,
                                 CN0308_下标越界, CN0309_不可遍历,
-                                CN0310_输入结束, 诊断袋)
+                                CN0310_输入结束, CN0311_主动抛出, 诊断袋)
 from cnplus.parser.ast import (一元运算, 一元表达式, 二元运算, 二元表达式,
                                函数声明, 变量引用, 声明语句, 如果语句, 字符串字面量,
                                小数字面量, 布尔字面量, 循环语句, 整数字面量,
@@ -21,7 +21,7 @@ from cnplus.parser.ast import (一元运算, 一元表达式, 二元运算, 二�
                                调用表达式, 赋值语句, 返回语句, 导入语句, 成员访问,
                                列表字面量, 字典字面量, 索引访问, 索引赋值语句,
                                遍历语句, 跳出语句, 继续语句, 自增语句,
-                               格式串, 多重声明语句,
+                               格式串, 多重声明语句, 尝试语句, 抛出语句,
                                错误表达式, 错误语句)
 from cnplus.runtime.values import 函数值, 类型名, 显示
 from cnplus.source import 源文件
@@ -205,7 +205,35 @@ class 树遍历后端(后端):
             值 = self._求值(s.值, 环)
             self._解包声明(s, 值, 环)
             return
+        if isinstance(s, 尝试语句):
+            self._尝试(s, 环)
+            return
+        if isinstance(s, 抛出语句):
+            说明 = self._求值(s.值, 环)
+            raise 运行时错误(CN0311_主动抛出, 显示(说明), s.跨,
+                          解释="这是程序自己用「抛出」制造的错误",
+                          提示="用「尝试 … 捕获」可以接住它")
         raise AssertionError(f"未处理的语句类型 {type(s).__name__}")
+
+    def _尝试(self, s: 尝试语句, 环: 环境) -> None:
+        """尝试 / 捕获 / 最后。
+
+        关键语义：「最后」在任何情况下都要执行 —— 正常结束、被捕获、
+        错误继续上抛、以及 返回/跳出/继续 穿过时。用 finally 保证。
+        """
+        try:
+            try:
+                self._执行块(s.主体, 环境(环))
+            except 运行时错误 as 错:
+                if s.捕获体 is None:
+                    raise          # 没有捕获段：错误继续上抛，但 最后 仍会跑
+                捕获环 = 环境(环)
+                if s.捕获变量 is not None:
+                    捕获环.声明(s.捕获变量, 错.消息)
+                self._执行块(s.捕获体, 捕获环)
+        finally:
+            if s.最后体 is not None:
+                self._执行块(s.最后体, 环境(环))
 
     def _解包声明(self, s: 多重声明语句, 值: object, 环: 环境) -> None:
         if not isinstance(值, (list, tuple)):
@@ -566,8 +594,8 @@ class 树遍历后端(后端):
                               解释="程序还想要输入，可是没有更多输入了",
                               提示="交互运行时直接输入；用管道喂数据时检查是不是给少了") from None
             except Exception as ex:
-                raise 运行时错误(CN0303_类型不匹配,
-                              f"调用 {被调.名} 出错：{ex}", e.跨) from None
+                # 内置函数的报错文本直接用异常消息，两后端保持一致
+                raise 运行时错误(CN0303_类型不匹配, str(ex), e.跨) from None
 
         if isinstance(被调, 函数值):
             声明 = 被调.声明
@@ -647,6 +675,20 @@ class _内置:
         return f"<内置函数 {self.名}>"
 
 
+def _转整数(a):
+    try:
+        return int(a)
+    except (ValueError, TypeError):
+        raise ValueError(f"没法把 {显示(a)} 变成整数") from None
+
+
+def _转小数(a):
+    try:
+        return float(a)
+    except (ValueError, TypeError):
+        raise ValueError(f"没法把 {显示(a)} 变成小数") from None
+
+
 def _范围(*参数):
     """范围(5) / 范围(1, 6) / 范围(1, 10, 2) —— 返回列表，方便直接遍历。"""
     return list(range(*[int(x) for x in 参数]))
@@ -715,8 +757,8 @@ def 内置表(打印实现, 读一行=None):
         ("询问数值", -4, lambda *a: _询问数值(a[0] if a else None, 读一行)),
         ("类型", 1, 类型名),
         ("文本", 1, 显示),
-        ("整数", 1, lambda a: int(a)),
-        ("小数", 1, lambda a: float(a)),
+        ("整数", 1, _转整数),
+        ("小数", 1, _转小数),
         # ---- 通用 ----
         ("长度", 1, len),
         ("范围", -3, _范围),
