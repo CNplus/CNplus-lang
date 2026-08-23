@@ -67,7 +67,12 @@ CNplus 是给中文使用者的语言，起关键字、内置函数名、写错�
 
 ## 约定
 
-- 语言：Python 3.11+，`uv` 管环境，`pytest` 测试
+- 语言：Python 3.11+，`pytest` 测试
+- 开发环境：`.venv`（由 Homebrew 的 `python3.11 -m venv` 建）。
+  **本机已弃用 uv**——它管的 Python 被删后 `.venv` 会变死链接。
+  重建：`/opt/homebrew/bin/python3.11 -m venv .venv && ./.venv/bin/pip install -e ".[dev,lsp]"`
+- 全局命令：`cnp`（`pip3.11 install -e .` 装出来的，写死 3.11 绝对路径，
+  不受 shell 里 `python3` 指向哪个版本影响）
 - 源文件扩展名：`.cnp`
 - 标识符、关键字、错误消息一律中文
 - 诊断码稳定：`CN0001` 起，见 `docs/spec/03-诊断码.md`
@@ -76,6 +81,12 @@ CNplus 是给中文使用者的语言，起关键字、内置函数名、写错�
 ## 不要做
 
 - 不要自研 IDE（做 LSP）
-- 不要手写 TextMate 语法（从 `keywords.toml` 生成）
+- 不要手写 TextMate 语法（从 `keywords.toml` 生成）。
+  **改完关键字必须重跑 `python tools/生成语法文件.py`**，否则编辑器里新
+  关键字不高亮；`tests/test_语法文件生成.py` 守着这条
+- 不要用 `ln -s` 装 VSCode 扩展 —— 新版 VSCode 只加载 `extensions.json`
+  登记过的扩展，软链会静默失效（表现为 `.cnp` 显示「纯文本」）。
+  用 `vsce package` + `code --install-extension *.vsix`，见
+  `docs/贡献/发布vscode扩展.md`
 - 不要做增量解析（YAGNI）
 - 不要修改 `archive/`（只读历史）
