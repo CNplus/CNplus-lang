@@ -1,10 +1,19 @@
-# CNplus
+<h1 align="center">
+  <img src="https://forum.cnplus.org/assets/uploads/system/site-logo.png" alt="CNplus Logo" width="40" align="absmiddle">
+   CNplus
+</h1>
 
-> 使用中文撸代码。一门中文编程语言 —— 玩具起步，架构上留有升级成正式语言的出口。
+<p align="center">
+  使用中文撸代码！自有 lexer/parser/AST、后端可插拔的中文编程语言
+</p>
 
-[![状态](https://img.shields.io/badge/状态-阶段2完成-brightgreen)](.hermes/plans/)
-[![测试](https://img.shields.io/badge/测试-441%20通过%20·%205%20跳过-brightgreen)](tests/)
-[![许可](https://img.shields.io/badge/许可-Apache--2.0-blue)](LICENSE)
+<p align="center">
+  <a href="https://cnplus.org"><img src="https://img.shields.io/badge/Official_Website-官网-brightgreen?style=flat-square" alt="Official Website"></a>
+  <a href="https://forum.cnplus.org"><img src="https://img.shields.io/badge/Forum-论坛-orange?style=flat-square" alt="Forum"></a>
+  <a href="https://wiki.cnplus.org"><img src="https://img.shields.io/badge/Wiki-文档-lightgrey?style=flat-square" alt="Wiki"></a>
+  <img src="https://img.shields.io/badge/测试-441%20通过%20·%205%20跳过-brightgreen?style=flat-square" alt="Tests">
+  <img src="https://img.shields.io/badge/许可-Apache--2.0-blue?style=flat-square" alt="License">
+</p>
 
 ## 这是什么
 
