@@ -39,11 +39,19 @@
     },
     {
       "name": "keyword.control.loop.cnplus",
-      "match": "循环|重复|当"
+      "match": "下一轮|循环|重复|遍历|每个|跳出|中断|继续|当"
+    },
+    {
+      "name": "keyword.control.exception.cnplus",
+      "match": "无论如何|出错时|尝试|捕获|最后|抛出|报错"
     },
     {
       "name": "keyword.control.flow.cnplus",
       "match": "返回|给出|返"
+    },
+    {
+      "name": "keyword.control.import.cnplus",
+      "match": "导入|引用|作为"
     },
     {
       "name": "keyword.declaration.cnplus",

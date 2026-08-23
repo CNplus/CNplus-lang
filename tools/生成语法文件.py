@@ -21,10 +21,17 @@ from cnplus.lexer.tokens import 读表  # noqa: E402
           / "editors" / "vscode" / "syntaxes" / "cnplus.tmLanguage.json")
 
 # 关键字分组 -> TextMate scope
+#
+# 只在这里声明「需要特殊配色」的组；**其余关键字由下方自动兜底**，
+# 避免重演硬编码名单漏项的老问题（D-017：静态检查器曾因硬编码
+# 内置名单漏认 8 个函数）。加新关键字时若忘了归组，它仍会被高亮，
+# 只是用通用的 keyword.other 配色。
 _分组 = {
     "keyword.control.conditional.cnplus": ["如果", "否则"],
-    "keyword.control.loop.cnplus": ["循环"],
+    "keyword.control.loop.cnplus": ["循环", "遍历", "每个", "跳出", "继续"],
+    "keyword.control.exception.cnplus": ["尝试", "捕获", "最后", "抛出"],
     "keyword.control.flow.cnplus": ["返回"],
+    "keyword.control.import.cnplus": ["导入", "作为"],
     "keyword.declaration.cnplus": ["令", "函数", "外部"],
     "constant.language.boolean.cnplus": ["真", "假"],
     "constant.language.null.cnplus": ["空"],
@@ -59,15 +66,32 @@ def 生成() -> dict:
     })
 
     # 关键字（按分组，每组把所有别名一起收进去）
+    已归组 = set()
     for scope, 组名们 in _分组.items():
         写法 = []
         for 组 in 组名们:
             写法.extend(关键字.get(组, []))
+            已归组.add(组)
         if not 写法:
             continue
         # 长的写法排前面，避免「不」先匹配掉「不然」
         写法.sort(key=len, reverse=True)
         模式.append({"name": scope, "match": "|".join(写法)})
+
+    # 自动兜底：关键字表里没被归组的，一律给通用 scope。
+    # 这样加了新关键字忘记归组时，高亮仍然生效（只是配色通用），
+    # 而不是像以前那样彻底不高亮 —— 硬编码名单必漏，见 D-017。
+    漏掉的 = []
+    for 组, 写法们 in 关键字.items():
+        if 组 in 已归组:
+            continue
+        漏掉的.extend(写法们)
+    if 漏掉的:
+        漏掉的.sort(key=len, reverse=True)
+        模式.append({
+            "name": "keyword.other.cnplus",
+            "match": "|".join(漏掉的),
+        })
 
     # 函数定义名
     函数写法 = "|".join(sorted(关键字.get("函数", []), key=len, reverse=True))

@@ -2,13 +2,14 @@
   "name": "cnplus",
   "displayName": "CNplus",
   "description": "CNplus 中文编程语言支持：语法高亮、实时诊断、一键运行",
-  "version": "0.1.0",
+  "version": "0.8.0",
   "publisher": "cnplus",
   "engines": {
     "vscode": "^1.75.0"
   },
   "categories": [
-    "Programming Languages"
+    "Programming Languages",
+    "Education"
   ],
   "main": "./extension.js",
   "activationEvents": [
@@ -40,6 +41,10 @@
         "command": "cnplus.运行当前文件",
         "title": "CNplus: 运行当前文件",
         "icon": "$(play)"
+      },
+      {
+        "command": "cnplus.显示解释器",
+        "title": "CNplus: 显示当前使用的解释器"
       }
     ],
     "menus": {
@@ -64,7 +69,7 @@
         "cnplus.python路径": {
           "type": "string",
           "default": "",
-          "description": "运行 CNplus 的 Python 解释器路径。留空则用 PATH 里的 python3"
+          "description": "运行 CNplus 的 Python 解释器路径。留空即自动探测（依次尝试工作区 .venv、Homebrew、系统 Python）。只有自动探测选错时才需要手填。"
         },
         "cnplus.启用LSP": {
           "type": "boolean",
@@ -76,5 +81,27 @@
   },
   "dependencies": {
     "vscode-languageclient": "^9.0.1"
+  },
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/CNplus/CNplus-lang.git"
+  },
+  "bugs": {
+    "url": "https://github.com/CNplus/CNplus-lang/issues"
+  },
+  "homepage": "https://wiki.cnplus.org",
+  "keywords": [
+    "cnplus",
+    "中文编程",
+    "chinese",
+    "programming-language",
+    "中文",
+    "教学"
+  ],
+  "icon": "icon.png",
+  "galleryBanner": {
+    "color": "#1f2430",
+    "theme": "dark"
   }
 }
