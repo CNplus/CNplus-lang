@@ -78,6 +78,23 @@ CNplus 是给中文使用者的语言，起关键字、内置函数名、写错�
 - 诊断码稳定：`CN0001` 起，见 `docs/spec/03-诊断码.md`
 - parser 恒返回 `(AST, 诊断列表)`，**永不抛异常**（编辑器依赖此性质）
 
+## 发版节奏（用户拍板 2026-08-24）
+
+**一个工作单元完成且全量测试绿 = 立即发版，不攒版。**
+修 bug 发 patch，加特性发 minor。项目早期没有外部用户依赖，
+版本号就是改动看板，频繁发版零成本。
+
+发版清单（全部以 cnplus-agent 身份执行）：
+
+1. 全量测试绿（`pytest tests/ -q`）
+2. 版本号三处同步：`pyproject.toml`、`cnplus/__init__.py`、
+   `editors/vscode/package.json`
+3. CHANGELOG「未发布」段定稿为版本号 + 日期 + 一句话标题
+4. `vsce package` 重打 vsix（扩展有改动时）
+5. 提交、打 tag、`gh release create`、上传 vsix 附件
+6. 官网同步：`CNplus-web/src/config/site.ts` 的 version 与 vsix 直链，
+   `tests/site.test.mjs` 版本断言，测试绿后推送
+
 ## 不要做
 
 - 不要自研 IDE（做 LSP）
