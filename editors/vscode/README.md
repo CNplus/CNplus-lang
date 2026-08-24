@@ -56,7 +56,7 @@ cnp 版本
 **命令行**（需先装好 `code` 命令）：
 
 ```bash
-code --install-extension cnplus-0.8.0.vsix
+code --install-extension cnplus-0.8.1.vsix
 ```
 
 若提示 `code` 命令找不到：在 VSCode 里按 `⌘⇧P` 输入 `install code`，
