@@ -12,6 +12,12 @@
     "Education"
   ],
   "main": "./extension.js",
+  "capabilities": {
+    "untrustedWorkspaces": {
+      "supported": "limited",
+      "description": "不受信任的窗口中，语法高亮仍可用；实时诊断与运行功能需要信任工作区后才能使用。"
+    }
+  },
   "activationEvents": [
     "onLanguage:cnplus"
   ],
