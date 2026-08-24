@@ -49,14 +49,19 @@ cnp 版本
 从 [GitHub Release](https://github.com/CNplus/CNplus-lang/releases) 下载
 `cnplus-<版本>.vsix`（或从 [官网](https://cnplus.org/download) 下载），然后：
 
-**命令行**：
+**图形界面（推荐，不用装任何东西）**：VSCode 里按 `⌘⇧X`（Windows/Linux
+是 `Ctrl+Shift+X`），点右上角 `…` → **从 VSIX 安装…**，选中下载的
+`.vsix` 文件。
+
+**命令行**（需先装好 `code` 命令）：
 
 ```bash
 code --install-extension cnplus-0.8.0.vsix
 ```
 
-**图形界面**：VSCode 里按 `⌘⇧X`（Windows/Linux 是 `Ctrl+Shift+X`），点
-右上角 `…` → **从 VSIX 安装…**，选中下载的 `.vsix` 文件。
+若提示 `code` 命令找不到：在 VSCode 里按 `⌘⇧P` 输入 `install code`，
+选「Shell Command: Install 'code' command in PATH」，重开终端再试；
+或直接用上面的图形界面方式。
 
 装完**完全退出 VSCode 再打开**（⌘Q，不是关窗口），扩展才会加载。
 
