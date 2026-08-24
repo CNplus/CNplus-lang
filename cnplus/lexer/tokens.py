@@ -43,6 +43,9 @@ class 种类(Enum):
     抛出 = auto()
     跳出 = auto()
     继续 = auto()
+    类 = auto()
+    初始化 = auto()
+    自己 = auto()
     # 运算符
     加 = auto()
     减 = auto()

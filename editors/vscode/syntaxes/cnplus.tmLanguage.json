@@ -70,6 +70,10 @@
       "match": "并且|或者|与|或|非"
     },
     {
+      "name": "keyword.other.cnplus",
+      "match": "初始化|自己|类"
+    },
+    {
       "match": "(?:函数|定义|过程)\\s+([^\\s(（]+)",
       "captures": {
         "1": {

@@ -19,6 +19,41 @@ class 函数值:
         return f"<函数 {self.声明.名}>"
 
 
+@dataclass(slots=True)
+class 类值:
+    """类（D-036 方案 C）：名字 + 方法表 + 构造声明。
+
+    实例化时：先按初始化形参建空字段，再跑初始化块体。
+    """
+    名: str
+    方法表: dict            # 名 -> 函数值
+    初始化: object = None   # 函数声明 | None
+    闭包环: object = None   # 类定义处的作用域（初始化块体的外层）
+
+    def __repr__(self) -> str:
+        return f"<类 {self.名}>"
+
+
+@dataclass(slots=True)
+class 实例值:
+    """实例：类指针 + 字段表。字段读写全落在这。"""
+    类: 类值
+    字段: dict
+
+    def __repr__(self) -> str:
+        return f"<{self.类.名} 实例>"
+
+
+@dataclass(slots=True)
+class 绑定方法:
+    """实例.方法 取出的值：调用时自动把实例填进「自己」。"""
+    函: 函数值
+    实例: 实例值
+
+    def __repr__(self) -> str:
+        return f"<方法 {self.函.声明.名} of {self.实例.类.名}>"
+
+
 def 类型名(值: object) -> str:
     if 值 is None:
         return "空"
@@ -35,6 +70,12 @@ def 类型名(值: object) -> str:
     if isinstance(值, dict):
         return "字典"
     if isinstance(值, 函数值):
+        return "函数"
+    if isinstance(值, 类值):
+        return "类"
+    if isinstance(值, 实例值):
+        return 值.类.名
+    if isinstance(值, 绑定方法):
         return "函数"
     return type(值).__name__
 
@@ -55,5 +96,11 @@ def 显示(值: object) -> str:
     if isinstance(值, dict):
         return "{" + ", ".join(f"{显示(k)}: {显示(v)}" for k, v in 值.items()) + "}"
     if isinstance(值, 函数值):
+        return repr(值)
+    if isinstance(值, 实例值):
+        return f"<{值.类.名}>"
+    if isinstance(值, 类值):
+        return repr(值)
+    if isinstance(值, 绑定方法):
         return repr(值)
     return str(值)

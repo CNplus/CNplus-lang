@@ -43,6 +43,43 @@ class 函数值:
         self.默认们 = 默认们 if 默认们 is not None else [缺省] * len(形参们)
 
 
+class 类值:
+    """类（D-036 方案 C）：名字 + 方法表 + 初始化形参。"""
+    __slots__ = ("名", "方法表", "初始化形参")
+
+    def __init__(self, 名, 方法表, 初始化形参=()):
+        self.名 = 名
+        self.方法表 = 方法表
+        self.初始化形参 = 初始化形参
+
+    def __repr__(self):
+        return f"<类 {self.名}>"
+
+
+class 实例值:
+    """实例：类指针 + 字段表。"""
+    __slots__ = ("类", "字段")
+
+    def __init__(self, 类, 字段):
+        self.类 = 类
+        self.字段 = 字段
+
+    def __repr__(self):
+        return f"<{self.类.名} 实例>"
+
+
+class 绑定方法:
+    """实例.方法：调用时自动把实例填进「自己」。"""
+    __slots__ = ("函", "实例")
+
+    def __init__(self, 函, 实例):
+        self.函 = 函
+        self.实例 = 实例
+
+    def __repr__(self):
+        return f"<方法 {self.函.名} of {self.实例.类.名}>"
+
+
 def 类型名(值):
     if 值 is None:
         return "空"
@@ -59,6 +96,12 @@ def 类型名(值):
     if isinstance(值, dict):
         return "字典"
     if isinstance(值, 函数值):
+        return "函数"
+    if isinstance(值, 类值):
+        return "类"
+    if isinstance(值, 实例值):
+        return 值.类.名
+    if isinstance(值, 绑定方法):
         return "函数"
     return type(值).__name__
 
@@ -78,6 +121,12 @@ def 显示(值):
         return "{" + ", ".join(f"{显示(k)}: {显示(v)}" for k, v in 值.items()) + "}"
     if isinstance(值, 函数值):
         return f"<函数 {值.名}>"
+    if isinstance(值, 实例值):
+        return f"<{值.类.名}>"
+    if isinstance(值, 类值):
+        return repr(值)
+    if isinstance(值, 绑定方法):
+        return repr(值)
     return str(值)
 
 
@@ -354,6 +403,12 @@ def _绑定(被调, 实参们, 关键字们, 行, 列):
 
 
 def 调用(被调, 实参们, 关键字们, 行, 列):
+    if isinstance(被调, 类值):
+        return 实例化(被调, 实参们, 关键字们, 行, 列)
+    if isinstance(被调, 绑定方法):
+        局部 = _绑定(被调.函, 实参们, 关键字们, 行, 列)
+        局部.声明("自己", 被调.实例)
+        return 被调.函.实现(局部)
     if isinstance(被调, 函数值):
         局部 = _绑定(被调, 实参们, 关键字们, 行, 列)
         return 被调.实现(局部)
@@ -405,12 +460,56 @@ def 点调用(全局, 对象, 方法名, 实参们, 关键字们, 行, 列):
 
 
 def 取成员(对象, 属性, 行, 列):
+    # 类实例：先字段后方法（取出即绑定）
+    if isinstance(对象, 实例值):
+        if 属性 in 对象.字段:
+            return 对象.字段[属性]
+        函 = 对象.类.方法表.get(属性)
+        if 函 is not None:
+            return 绑定方法(函=函, 实例=对象)
+        raise CNplus错误("CN0302", f"{对象.类.名} 里没有「{属性}」这个字段或方法", 行, 列,
+                      解释=f"{对象.类.名} 的字段和方法里都找不到这个名字",
+                      提示="检查名字是不是写错了，或去类定义里看看")
     try:
         return getattr(对象, 属性)
     except AttributeError:
         raise CNplus错误("CN0302", f"{属性} 在 {类型名(对象)} 里不存在", 行, 列,
                       解释=f"这个东西没有叫「{属性}」的成员",
                       提示="检查成员名是不是写错了")
+
+
+def 设成员(对象, 属性, 值, 行, 列):
+    """对象.字段 = 值 —— 类实例写字段（D-036）。"""
+    if isinstance(对象, 实例值):
+        对象.字段[属性] = 值
+        return
+    raise CNplus错误("CN0303", f"{类型名(对象)} 没法用「.」设置成员", 行, 列,
+                  解释="「对象.成员 = 值」目前只用于类实例的字段",
+                  提示="检查点号左边是不是一个实例")
+
+
+def 实例化(类, 实参们, 关键字们, 行, 列):
+    """造实例：初始化形参自动转存字段，再跑初始化块体（D-036）。
+
+    初始化块体由发射器生成为 _初始化_类名 函数值存在方法表里，
+    这里只负责绑定形参、转存字段、调它。
+    """
+    实例 = 实例值(类=类, 字段={})
+    初 = 类.方法表.get("__初始化__")
+    if 初 is None:
+        if 实参们 or 关键字们:
+            raise CNplus错误("CN0306",
+                          f"{类.名} 没有写「初始化」，不需要参数，给了 {len(实参们)} 个",
+                          行, 列,
+                          解释="类没定义初始化，造它的时候括号里不用填东西",
+                          提示=f"直接写 {类.名}()")
+        return 实例
+    局部 = _绑定(初, 实参们, 关键字们, 行, 列)
+    for p in 初.形参们:
+        实例.字段[p] = 局部.表.get(p)
+    局部.声明("自己", 实例)
+    初.实现(局部)
+    return 实例
 
 
 def 导入(模块名, 行, 列):
