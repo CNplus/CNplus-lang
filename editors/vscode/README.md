@@ -22,7 +22,11 @@
 | 一键运行 | `F5` 或点右上角 ▶ |
 | 自动找解释器 | 装了多个 Python 也不用手动配置 |
 
-## 安装前提
+## 安装
+
+分两步：先装 CNplus 本体，再装这个扩展。
+
+### 第 1 步：装 CNplus 本体
 
 扩展只是编辑器这一层，运行程序需要先装 CNplus 本体。
 
@@ -34,13 +38,27 @@ cd CNplus-lang
 pip3 install -e ".[lsp]"
 ```
 
-需要 Python 3.11 或更新的版本。装完就能用了，扩展会自己找到它。
-
-装好后可以先在终端验证：
+需要 Python 3.11 或更新的版本。装好后可以先在终端验证：
 
 ```bash
 cnp 版本
 ```
+
+### 第 2 步：装扩展
+
+从 [GitHub Release](https://github.com/CNplus/CNplus-lang/releases) 下载
+`cnplus-<版本>.vsix`（或从 [官网](https://cnplus.org/download) 下载），然后：
+
+**命令行**：
+
+```bash
+code --install-extension cnplus-0.8.0.vsix
+```
+
+**图形界面**：VSCode 里按 `⌘⇧X`（Windows/Linux 是 `Ctrl+Shift+X`），点
+右上角 `…` → **从 VSIX 安装…**，选中下载的 `.vsix` 文件。
+
+装完**完全退出 VSCode 再打开**（⌘Q，不是关窗口），扩展才会加载。
 
 ### 如果你电脑上有多个 Python
 
