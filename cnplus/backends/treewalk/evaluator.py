@@ -22,7 +22,8 @@ from cnplus.parser.ast import (一元运算, 一元表达式, 二元运算, 二�
                                列表字面量, 字典字面量, 索引访问, 索引赋值语句,
                                遍历语句, 跳出语句, 继续语句, 自增语句,
                                格式串, 多重声明语句, 尝试语句, 抛出语句,
-                               错误表达式, 错误语句, 类声明, 成员赋值语句)
+                               错误表达式, 错误语句, 类声明, 成员赋值语句,
+                               切片访问)
 from cnplus.runtime.values import 函数值, 类型名, 显示, 类值, 实例值, 绑定方法
 from cnplus.source import 源文件
 
@@ -375,11 +376,52 @@ class 树遍历后端(后端):
             return 出
         if isinstance(e, 索引访问):
             return self._取索引(e, 环)
+        if isinstance(e, 切片访问):
+            return self._取切片(e, 环)
         if isinstance(e, 成员访问):
             return self._取成员(e, 环)
         if isinstance(e, 调用表达式):
             return self._调用(e, 环)
         raise AssertionError(f"未处理的表达式类型 {type(e).__name__}")
+
+    def _取切片(self, e: 切片访问, 环: 环境) -> object:
+        """切片：左闭右开、省略夹紧、负数从尾数（D-037）。
+
+        越界自动夹紧不报错（与单索引不同：切片是取一段，段可以短）。
+        """
+        对象 = self._求值(e.对象, 环)
+        if not isinstance(对象, (list, str)):
+            raise 运行时错误(CN0303_类型不匹配,
+                          f"{类型名(对象)}不能用切片取值", e.跨,
+                          解释="只有列表和文字能用 [起:止] 截一段",
+                          提示="检查这个东西的类型")
+        长 = len(对象)
+        起 = self._切片端点(e.起, 0, 长, 环, 是起=True)
+        止 = self._切片端点(e.止, 长, 长, 环, 是起=False)
+        if 起 > 长:
+            起 = 长
+        if 止 > 长:
+            止 = 长
+        if 起 > 止:
+            起 = 止  # 起大于止：空段（统一表现，与 Python 一致）
+        return 对象[起:止]
+
+    def _切片端点(self, 节点, 缺省: int, 长: int, 环: 环境, 是起: bool) -> int:
+        """把切片端点解析成非负位置：None 用缺省；负数加长；再夹到 [0, 长]。"""
+        if 节点 is None:
+            return 缺省
+        值 = self._求值(节点, 环)
+        if isinstance(值, bool) or not isinstance(值, int):
+            raise 运行时错误(CN0303_类型不匹配,
+                          f"切片的{('起' if 是起 else '止')}必须是整数，这里是{类型名(值)}",
+                          节点.跨,
+                          解释="[起:止] 两端要写「第几个」，用整数（负数表示从尾数）",
+                          提示="例如 名单[1:3] 或 名单[-2:]")
+        if 值 < 0:
+            值 += 长
+        if 值 < 0:
+            值 = 0
+        return 值
 
     def _取索引(self, e: 索引访问, 环: 环境) -> object:
         对象 = self._求值(e.对象, 环)

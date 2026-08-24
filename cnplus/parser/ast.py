@@ -143,6 +143,15 @@ class 索引访问(表达式):
 
 
 @dataclass(frozen=True, slots=True)
+class 切片访问(表达式):
+    """a[起:止] —— 左闭右开，起/止可省略，负数从尾数（D-037）。"""
+    对象: 表达式
+    起: 表达式 | None      # None = 省略（从头）
+    止: 表达式 | None      # None = 省略（到尾）
+    跨: 跨度
+
+
+@dataclass(frozen=True, slots=True)
 class 格式串(表达式):
     """@"你好，{名字}" —— 部分是 str（原文）或 表达式（要嵌入的值）交替。"""
     部分: tuple[object, ...]  # 每项是 str 或 表达式

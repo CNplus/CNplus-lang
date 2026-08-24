@@ -27,7 +27,8 @@ from cnplus.parser.ast import (一元运算, 一元表达式, 二元运算, 二�
                                列表字面量, 字典字面量, 索引访问, 索引赋值语句,
                                遍历语句, 跳出语句, 继续语句, 自增语句,
                                格式串, 多重声明语句, 尝试语句, 抛出语句,
-                               错误表达式, 错误语句, 类声明, 成员赋值语句)
+                               错误表达式, 错误语句, 类声明, 成员赋值语句,
+                               切片访问)
 
 _运行时路径 = Path(__file__).with_name("运行时源码.py")
 _运行时 = _运行时路径.read_text(encoding="utf-8")
@@ -367,6 +368,11 @@ class 发射器:
                         f"[{实参}], [{关键字}], {行}, {列})")
             被调 = self._表达式(e.被调, 环名)
             return f"调用({被调}, [{实参}], [{关键字}], {行}, {列})"
+        if isinstance(e, 切片访问):
+            对象 = self._表达式(e.对象, 环名)
+            起 = self._表达式(e.起, 环名) if e.起 is not None else "None"
+            止 = self._表达式(e.止, 环名) if e.止 is not None else "None"
+            return f"取切片({对象}, {起}, {止}, {行}, {列})"
         raise AssertionError(f"未处理的表达式类型 {type(e).__name__}")
 
     def _二元(self, e: 二元表达式, 环名: str) -> str:
