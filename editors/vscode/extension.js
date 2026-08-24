@@ -100,7 +100,38 @@ async function 提示装不上(场景) {
   }
 }
 
+/** 不受信任窗口的提示（issue #1：静默不激活让人以为扩展坏了） */
+function 提示不受信() {
+  vscode.window
+    .showWarningMessage(
+      "CNplus：当前窗口不受信任，实时诊断与运行功能未启用（语法高亮仍可用）。",
+      "信任此工作区"
+    )
+    .then((选择) => {
+      if (选择 === "信任此工作区") {
+        vscode.commands.executeCommand("workbench.trust.manage");
+      }
+    });
+}
+
 function activate(上下文) {
+  // ---- 不受信任窗口：提示引导信任，别让用户以为扩展坏了（issue #1）----
+  if (!vscode.workspace.isTrusted) {
+    提示不受信();
+    上下文.subscriptions.push(
+      vscode.workspace.onDidGrantWorkspaceTrust(() => {
+        // 用户点了信任后，本函数不会自动重跑，提示去重新加载窗口
+        vscode.window
+          .showInformationMessage("CNplus：工作区已受信任，正在启用完整功能…", "重新加载窗口")
+          .then((选择) => {
+            if (选择 === "重新加载窗口") {
+              vscode.commands.executeCommand("workbench.action.reloadWindow");
+            }
+          });
+      })
+    );
+  }
+
   // ---- 运行当前文件 ----
   上下文.subscriptions.push(
     vscode.commands.registerCommand("cnplus.运行当前文件", async () => {
