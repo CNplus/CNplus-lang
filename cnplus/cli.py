@@ -171,6 +171,10 @@ def main(参数: list[str] | None = None) -> int:
         js = "--js" in 参数
         位置参数 = [a for a in 参数[1:] if not a.startswith("--")]
         return 编译(位置参数[0], 位置参数[1] if len(位置参数) > 1 else None, js=js)
+    if 命令 == "交互":
+        from cnplus.repl import 交互循环
+        交互循环()
+        return 0
     # 运行 支持 --python 转译后端
     if 命令 == "运行":
         if len(参数) >= 2 and 参数[1] in ("--python", "-p", "--转译"):
