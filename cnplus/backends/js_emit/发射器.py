@@ -16,7 +16,8 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-from cnplus.parser.ast import (二元运算, 二元表达式, 函数声明, 变量引用,
+from cnplus.parser.ast import (二元运算, 二元表达式, 一元运算, 一元表达式,
+                               函数声明, 变量引用,
                                声明语句, 如果语句, 字符串字面量, 小数字面量,
                                布尔字面量, 循环语句, 整数字面量, 程序,
                                空字面量, 表达式, 表达式语句, 语句,
@@ -37,6 +38,7 @@ _二元函数 = {
     二元运算.小于: "小于", 二元运算.小于等于: "小于等于",
     二元运算.大于: "大于", 二元运算.大于等于: "大于等于",
     二元运算.幂: "幂",
+    二元运算.与: "与", 二元运算.或: "或",
 }
 
 
@@ -95,12 +97,208 @@ class 发射器:
             值 = self._表达式(s.值, 环名)
             self._行(f"{环名}.声明({js_str(s.名)}, {值}, {行}, {列});", 行)
             return
+        if isinstance(s, 多重声明语句):
+            值 = self._表达式(s.值, 环名)
+            名列 = "[" + ", ".join(js_str(n) for n in s.名们) + "]"
+            self._行(f"解包声明({环名}, {名列}, {值}, {行}, {列});", 行)
+            return
+        if isinstance(s, 赋值语句):
+            值 = self._表达式(s.值, 环名)
+            法 = "赋外层" if s.是外部 else "赋值"
+            if s.复合 is not None:
+                旧 = f"{环名}.取({js_str(s.名)}, {行}, {列})"
+                运名 = _二元函数[s.复合]
+                值 = f"{运名}({旧}, {值}, {行}, {列})"
+            self._行(f"{环名}.{法}({js_str(s.名)}, {值}, {行}, {列});", 行)
+            return
+        if isinstance(s, 自增语句):
+            旧 = f"{环名}.取({js_str(s.名)}, {行}, {列})"
+            值 = f"自增值({旧}, {s.增量}, {行}, {列})"
+            self._行(f"{环名}.赋值({js_str(s.名)}, {值}, {行}, {列});", 行)
+            return
         if isinstance(s, 表达式语句):
             self._行(self._表达式(s.表达, 环名) + ";", 行)
+            return
+        if isinstance(s, 如果语句):
+            self._如果(s, 环名)
+            return
+        if isinstance(s, 循环语句):
+            条件 = f"条件({self._表达式(s.条件, 环名)}, {行}, {列})"
+            self._行(f"while ({条件}) {{", 行)
+            self.缩进 += 1
+            self._块(s.主体, self._进块(环名))
+            self.缩进 -= 1
+            self._行("}", 行)
+            return
+        if isinstance(s, 函数声明):
+            self._函数(s, 环名)
+            return
+        if isinstance(s, 返回语句):
+            if s.多值:
+                多 = "[" + ", ".join(self._表达式(v, 环名) for v in s.多值) + "]"
+                if self.在函数内:
+                    self._行(f"return {多};", 行)
+                else:
+                    self._行(多 + ";", 行)
+                return
+            if self.在函数内:
+                值 = self._表达式(s.值, 环名) if s.值 is not None else "null"
+                self._行(f"return {值};", 行)
+            elif s.值 is not None:
+                # 顶层 返回：求值但不返回（与树遍历一致：值被丢弃）
+                self._行(self._表达式(s.值, 环名) + ";", 行)
+            return
+        if isinstance(s, 遍历语句):
+            self._遍历(s, 环名)
+            return
+        if isinstance(s, 跳出语句):
+            self._行("break;", 行)
+            return
+        if isinstance(s, 继续语句):
+            self._行("continue;", 行)
+            return
+        if isinstance(s, 索引赋值语句):
+            对象 = self._表达式(s.对象, 环名)
+            下标 = self._表达式(s.下标, 环名)
+            值 = self._表达式(s.值, 环名)
+            self._行(f"设索引({对象}, {下标}, {值}, {行}, {列});", 行)
+            return
+        if isinstance(s, 成员赋值语句):
+            对象 = self._表达式(s.对象, 环名)
+            值 = self._表达式(s.值, 环名)
+            self._行(f"设成员({对象}, {js_str(s.属性)}, {值}, {行}, {列});", 行)
+            return
+        if isinstance(s, 类声明):
+            self._类(s, 环名)
+            return
+        if isinstance(s, 尝试语句):
+            self._尝试(s, 环名)
+            return
+        if isinstance(s, 抛出语句):
+            值 = self._表达式(s.值, 环名)
+            self._行(f"抛出({值}, {行}, {列});", 行)
+            return
+        if isinstance(s, 导入语句):
+            self._行(f"{环名}.声明({js_str(s.别名 or s.模块)}, "
+                     f"不支持导入({js_str(s.模块)}, {行}, {列}), {行}, {列});", 行)
             return
         if isinstance(s, 错误语句):
             return
         raise AssertionError(f"未处理的语句类型 {type(s).__name__}")
+
+    def _尝试(self, s: 尝试语句, 环名: str) -> None:
+        行, 列 = self._位置(s.跨)
+        self._行("try {", 行)
+        self.缩进 += 1
+        self._块(s.主体, self._进块(环名))
+        self.缩进 -= 1
+        if s.捕获体 is not None:
+            # 只捕 CNplus 的错误，其他异常原样重抛（与 Python 后端一致）
+            self._行("} catch (_错) {", 行)
+            self.缩进 += 1
+            self._行("if (!(_错 instanceof CNplus错误)) { throw _错; }", 行)
+            捕获环 = self._进块(环名)
+            if s.捕获变量 is not None:
+                self._行(f"{捕获环}.声明({js_str(s.捕获变量)}, "
+                         f"_错.消息, {行}, {列});", 行)
+            self._块(s.捕获体, 捕获环)
+            self.缩进 -= 1
+        if s.最后体 is not None:
+            self._行("} finally {", 行)
+            self.缩进 += 1
+            self._块(s.最后体, self._进块(环名))
+            self.缩进 -= 1
+        self._行("}", 行)
+
+    def _如果(self, s: 如果语句, 环名: str) -> None:
+        行, 列 = self._位置(s.跨)
+        条件 = f"条件({self._表达式(s.条件, 环名)}, {行}, {列})"
+        self._行(f"if ({条件}) {{", 行)
+        self.缩进 += 1
+        self._块(s.主体, self._进块(环名))
+        self.缩进 -= 1
+        if s.否则体:
+            self._行("} else {", 行)
+            self.缩进 += 1
+            self._块(s.否则体, self._进块(环名))
+            self.缩进 -= 1
+        self._行("}", 行)
+
+    def _遍历(self, s: 遍历语句, 环名: str) -> None:
+        行, 列 = self._位置(s.跨)
+        可迭代 = self._表达式(s.可迭代, 环名)
+        循环变 = f"_项{self.环计数}"
+        self._行(f"for (const {循环变} of 遍历项({可迭代}, {行}, {列})) {{", 行)
+        self.缩进 += 1
+        新环 = self._进块(环名)
+        self._行(f"{新环}.声明({js_str(s.变量)}, {循环变}, {行}, {列});", 行)
+        self._块(s.主体, 新环)
+        self.缩进 -= 1
+        self._行("}", 行)
+
+    def _函数(self, s: 函数声明, 环名: str) -> None:
+        行, 列 = self._位置(s.跨)
+        函数名 = self._新函数名(s.名)
+        self._行(f"function {函数名}(_环) {{", 行)
+        self.缩进 += 1
+        旧在函数内 = self.在函数内
+        self.在函数内 = True
+        self._块(s.主体, "_环")
+        self.在函数内 = 旧在函数内
+        self.缩进 -= 1
+        self._行("}", 行)
+        形参 = ", ".join(js_str(p) for p in s.形参)
+        默认们 = s.默认值们 or tuple(None for _ in s.形参)
+        默认串 = ", ".join(
+            (self._表达式(d, 环名) if d is not None else "缺省")
+            for d in 默认们)
+        self._行(
+            f"{环名}.声明({js_str(s.名)}, new 函数值({函数名}, {环名}, "
+            f"[{形参}], {js_str(s.名)}, [{默认串}]), {行}, {列});", 行)
+
+    def _类(self, s: 类声明, 环名: str) -> None:
+        """类声明 → 方法函数 + 类值（D-036，与 Python 后端同构）。"""
+        行, 列 = self._位置(s.跨)
+        旧在函数内 = self.在函数内
+        self.在函数内 = True
+        项们 = []  # (名, 实现名, 形参, 默认串)
+        for m in s.方法们:
+            项们.append(self._方法函数(m, 环名, s.名))
+        if s.初始化 is not None:
+            项们.append(self._方法函数(s.初始化, 环名, s.名, 内部名="__初始化__"))
+        self.在函数内 = 旧在函数内
+        对们 = ", ".join(
+            f"{js_str(名)}: new 函数值({实现}, {环名}, [{', '.join(js_str(p) for p in 形参)}], "
+            f"{js_str('初始化' if 名 == '__初始化__' else 名)}, [{默认}])"
+            for 名, 实现, 形参, 默认 in 项们)
+        表达 = "{" + 对们 + "}" if 对们 else "{}"
+        初形参 = list(s.初始化.形参) if s.初始化 else []
+        形参串 = ", ".join(js_str(p) for p in 初形参)
+        self._行(f"{环名}.声明({js_str(s.名)}, new 类值({js_str(s.名)}, "
+                 f"new Map(Object.entries({表达})), [{形参串}]), {行}, {列});", 行)
+
+    def _方法函数(self, m: 函数声明, 环名: str, 类名: str,
+                内部名: str | None = None) -> tuple[str, str, list, str]:
+        """生成一个方法体函数。空方法体生成 pass 等价物。"""
+        行, 列 = self._位置(m.跨)
+        函数名 = self._新函数名(内部名 or m.名)
+        self._行(f"function {函数名}(_环) {{", 行)
+        self.缩进 += 1
+        旧 = self.在函数内
+        self.在函数内 = True
+        if m.主体:
+            self._块(m.主体, "_环")
+        else:
+            self._行("", 行)
+        self.在函数内 = 旧
+        self.缩进 -= 1
+        self._行("}", 行)
+        形参 = list(m.形参)
+        默认们 = m.默认值们 or tuple(None for _ in m.形参)
+        默认串 = ", ".join(
+            (self._表达式(d, 环名) if d is not None else "缺省")
+            for d in 默认们)
+        return (内部名 or m.名, 函数名, 形参, 默认串)
 
     # ==================== 表达式 ====================
     def _表达式(self, e: 表达式, 环名: str) -> str:
@@ -120,6 +318,18 @@ class 发射器:
             return "null"
         if isinstance(e, 变量引用):
             return f"{环名}.取({js_str(e.名)}, {行}, {列})"
+        if isinstance(e, 一元表达式):
+            运名 = {一元运算.负: "负", 一元运算.非: "非"}[e.运算]
+            return f"{运名}({self._表达式(e.操作数, 环名)}, {行}, {列})"
+        if isinstance(e, 二元表达式):
+            运名 = _二元函数[e.运算]
+            左 = self._表达式(e.左, 环名)
+            右 = self._表达式(e.右, 环名)
+            if e.运算 is 二元运算.与:
+                return f"与({左}, {右}, {行}, {列})"
+            if e.运算 is 二元运算.或:
+                return f"或({左}, {右}, {行}, {列})"
+            return f"{运名}({左}, {右}, {行}, {列})"
         if isinstance(e, 调用表达式):
             实参 = ", ".join(self._表达式(a, 环名) for a in e.实参)
             关键字 = ", ".join(
@@ -131,7 +341,39 @@ class 发射器:
                         f"[{实参}], [{关键字}], {行}, {列})")
             被调 = self._表达式(e.被调, 环名)
             return f"调用({被调}, [{实参}], [{关键字}], {行}, {列})"
+        if isinstance(e, 列表字面量):
+            元素 = ", ".join(self._表达式(x, 环名) for x in e.元素)
+            return f"[{元素}]"
+        if isinstance(e, 字典字面量):
+            对们 = ", ".join(
+                f"[{self._表达式(k, 环名)}, {self._表达式(v, 环名)}]"
+                for k, v in e.键值对)
+            return f"造字典([{对们}], {行}, {列})"
+        if isinstance(e, 索引访问):
+            对象 = self._表达式(e.对象, 环名)
+            下标 = self._表达式(e.下标, 环名)
+            return f"取索引({对象}, {下标}, {行}, {列})"
+        if isinstance(e, 切片访问):
+            对象 = self._表达式(e.对象, 环名)
+            起 = self._表达式(e.起, 环名) if e.起 is not None else "null"
+            止 = self._表达式(e.止, 环名) if e.止 is not None else "null"
+            return f"取切片({对象}, {起}, {止}, {行}, {列})"
+        if isinstance(e, 成员访问):
+            对象 = self._表达式(e.对象, 环名)
+            return f"取成员({对象}, {js_str(e.属性)}, {行}, {列})"
+        if isinstance(e, 格式串):
+            片段 = []
+            for 段 in e.部分:
+                if isinstance(段, str):
+                    片段.append(js_str(段))
+                else:
+                    片段.append(f"显示({self._表达式(段, 环名)})")
+            return "加连接([" + ", ".join(片段) + "])" if 片段 else "''"
         raise AssertionError(f"未处理的表达式类型 {type(e).__name__}")
+
+
+def _加连接(片段们) -> str:
+    return "".join(片段们)
 
 
 def textwrap_split(text: str) -> list[str]:

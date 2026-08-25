@@ -190,6 +190,7 @@ function 条件(值, 行, 列) {
 
 
 function 负(值, 行, 列) {
+    值 = 拆小数(值);
     if (是布尔(值) || !是数(值)) {
         throw new CNplus错误("CN0303",
             `负号只能用于数字，这里是${类型名(值)}`, 行, 列,
@@ -211,6 +212,7 @@ function 非(值, 行, 列) {
 
 
 function 加(左, 右, 行, 列) {
+    左 = 拆小数(左); 右 = 拆小数(右);
     if (typeof 左 === "string" && typeof 右 === "string") return 左 + 右;
     if (!(是数(左) && 是数(右))) {
         throw new CNplus错误("CN0303",
@@ -234,12 +236,14 @@ function _两数(运, 左, 右, 行, 列) {
 
 
 function 减(左, 右, 行, 列) {
+    左 = 拆小数(左); 右 = 拆小数(右);
     [左, 右] = _两数("-", 左, 右, 行, 列);
     return 左 - 右;
 }
 
 
 function 乘(左, 右, 行, 列) {
+    左 = 拆小数(左); 右 = 拆小数(右);
     if (typeof 左 === "string" && 是数(右)) return 左.repeat(Math.trunc(右));
     if (typeof 右 === "string" && 是数(左)) return 右.repeat(Math.trunc(左));
     [左, 右] = _两数("*", 左, 右, 行, 列);
@@ -248,6 +252,7 @@ function 乘(左, 右, 行, 列) {
 
 
 function 除(左, 右, 行, 列) {
+    左 = 拆小数(左); 右 = 拆小数(右);
     [左, 右] = _两数("/", 左, 右, 行, 列);
     if (右 === 0) {
         throw new CNplus错误("CN0304", "除数不能是零", 行, 列,
@@ -260,6 +265,7 @@ function 除(左, 右, 行, 列) {
 
 
 function 整除(左, 右, 行, 列) {
+    左 = 拆小数(左); 右 = 拆小数(右);
     [左, 右] = _两数("//", 左, 右, 行, 列);
     if (右 === 0) {
         throw new CNplus错误("CN0304", "除数不能是零", 行, 列);
@@ -269,6 +275,7 @@ function 整除(左, 右, 行, 列) {
 
 
 function 取余(左, 右, 行, 列) {
+    左 = 拆小数(左); 右 = 拆小数(右);
     [左, 右] = _两数("%", 左, 右, 行, 列);
     if (右 === 0) {
         throw new CNplus错误("CN0304", "除数不能是零", 行, 列);
@@ -278,6 +285,7 @@ function 取余(左, 右, 行, 列) {
 
 
 function 幂(左, 右, 行, 列) {
+    左 = 拆小数(左); 右 = 拆小数(右);
     if (!(是数(左) && 是数(右))) {
         throw new CNplus错误("CN0303",
             `「**」不能用于${类型名(左)}和${类型名(右)}`, 行, 列,
@@ -302,6 +310,7 @@ function _可比较(左, 右) {
 
 
 function 等于(左, 右, 行, 列) {
+    左 = 拆小数(左); 右 = 拆小数(右);
     if (!_可比较(左, 右)) {
         throw new CNplus错误("CN0303",
             `不能比较${类型名(左)}和${类型名(右)}`, 行, 列,
@@ -335,6 +344,7 @@ function 不等于(左, 右, 行, 列) {
 
 
 function _比大小(运, 左, 右, 行, 列) {
+    左 = 拆小数(左); 右 = 拆小数(右);
     if (typeof 左 === "string" && typeof 右 === "string") {
         // pass
     } else if (是数(左) && 是数(右)) {
@@ -442,9 +452,237 @@ class 绑定方法 {
 }
 
 
-// ==================== 调用（T3 最小：内置函数）====================
+// ==================== 自增 / 解包 / 遍历 ====================
+
+function 自增值(旧, 增量, 行, 列) {
+    if (是布尔(旧) || !是数(旧)) {
+        throw new CNplus错误("CN0303", `${类型名(旧)}不能自增/自减`, 行, 列,
+            "++ 和 -- 只能用于数字", "确认这个变量是数字");
+    }
+    return 拆小数(旧) + 增量;
+}
+
+
+function 解包声明(环, 名们, 值, 行, 列) {
+    if (!Array.isArray(值)) {
+        throw new CNplus错误("CN0303",
+            `右边是${类型名(值)}，没法拆给 ${名们.length} 个变量`, 行, 列,
+            "要拆开赋值，右边得是一个列表（或多返回值）",
+            "例如：设 甲, 乙 = [1, 2]");
+    }
+    if (值.length !== 名们.length) {
+        throw new CNplus错误("CN0306",
+            `左边有 ${名们.length} 个变量，右边有 ${值.length} 个值`, 行, 列,
+            "拆开赋值时两边数量必须一样多",
+            `左边写 ${值.length} 个变量，或让右边给 ${名们.length} 个值`);
+    }
+    名们.forEach((名, i) => 环.声明(名, 值[i], 行, 列));
+}
+
+
+function 遍历项(可迭代, 行, 列) {
+    if (Array.isArray(可迭代)) return [...可迭代];
+    if (typeof 可迭代 === "string") return [...可迭代];
+    if (可迭代 instanceof Map) return [...可迭代.keys()];
+    throw new CNplus错误("CN0309", `${类型名(可迭代)}不能遍历`, 行, 列,
+        "「遍历…每个…」需要一串东西，比如列表、字典或文字",
+        "用列表：遍历 [1, 2, 3] 每个 x");
+}
+
+
+// ==================== 集合：索引 / 切片 / 字典 ====================
+
+function 取索引(对象, 下标, 行, 列) {
+    下标 = 拆小数(下标);
+    if (Array.isArray(对象) || typeof 对象 === "string") {
+        if (!Number.isInteger(下标)) {
+            throw new CNplus错误("CN0303",
+                `下标必须是整数，这里是${类型名(下标)}`, 行, 列,
+                "方括号里要写「第几个」，用整数（负数表示从尾数）");
+        }
+        let i = 下标;
+        if (i < 0) i += 对象.length;
+        if (i < 0 || i >= 对象.length) {
+            throw new CNplus错误("CN0308",
+                `下标 ${显示(下标)} 超出范围（一共 ${对象.length} 个）`, 行, 列,
+                "列表下标从 0 开始，最大是「长度 - 1」",
+                "用「长度(…)」看有多少个");
+        }
+        return 对象[i];
+    }
+    if (对象 instanceof Map) {
+        if (!对象.has(下标)) {
+            throw new CNplus错误("CN0308", `字典里没有标签 ${显示(下标)}`, 行, 列,
+                "这个标签不在字典里", "检查标签是不是写错了");
+        }
+        return 对象.get(下标);
+    }
+    throw new CNplus错误("CN0303", `${类型名(对象)}不能用下标取值`, 行, 列,
+        "只有列表、字典和文字能用 […] 取里面的东西",
+        "检查这个东西的类型");
+}
+
+
+function 设索引(对象, 下标, 值, 行, 列) {
+    下标 = 拆小数(下标);
+    if (Array.isArray(对象)) {
+        if (!Number.isInteger(下标)) {
+            throw new CNplus错误("CN0303",
+                `下标必须是整数，这里是${类型名(下标)}`, 行, 列);
+        }
+        let i = 下标;
+        if (i < 0) i += 对象.length;
+        if (i < 0 || i >= 对象.length) {
+            throw new CNplus错误("CN0308",
+                `下标 ${显示(下标)} 超出范围`, 行, 列,
+                "这个位置不存在，没法往那里放东西",
+                "列表下标从 0 开始");
+        }
+        对象[i] = 值;
+        return;
+    }
+    if (对象 instanceof Map) {
+        对象.set(下标, 值);
+        return;
+    }
+    throw new CNplus错误("CN0303", `${类型名(对象)}不能用下标赋值`, 行, 列,
+        "只有列表和字典能这样改内容",
+        "检查一下这个东西是不是列表或字典");
+}
+
+
+function 造字典(键值对, 行, 列) {
+    const 出 = new Map();
+    for (const [键, 值] of 键值对) {
+        const k = 拆小数(键);
+        if (!(typeof k === "string" || Number.isInteger(k)
+              || typeof k === "boolean" || k === null)) {
+            throw new CNplus错误("CN0303",
+                `${类型名(键)}不能作字典的标签`, 行, 列,
+                "字典的标签得是文字或数字这类固定不变的东西",
+                '例如 {"名字": "小明"}');
+        }
+        出.set(k, 值);
+    }
+    return 出;
+}
+
+
+function 取切片(对象, 起, 止, 行, 列) {
+    // 与树遍历/Python 后端逐字同语义（D-037）：夹紧/负数/空段
+    if (!Array.isArray(对象) && typeof 对象 !== "string") {
+        throw new CNplus错误("CN0303", `${类型名(对象)}不能用切片取值`, 行, 列,
+            "只有列表和文字能用 [起:止] 截一段",
+            "检查这个东西的类型");
+    }
+    const 长 = 对象.length;
+    const 端点 = (值, 缺省) => {
+        if (值 === null || 值 === undefined) return 缺省;
+        值 = 拆小数(值);
+        if (typeof 值 !== "number" || !Number.isInteger(值)) {
+            throw new CNplus错误("CN0303",
+                `切片的起止必须是整数，这里是${类型名(值)}`, 行, 列,
+                "[起:止] 两端要写「第几个」，用整数（负数表示从尾数）",
+                "例如 名单[1:3] 或 名单[-2:]");
+        }
+        if (值 < 0) 值 += 长;
+        if (值 < 0) 值 = 0;
+        return 值;
+    };
+    let s = 端点(起, 0);
+    let e = 端点(止, 长);
+    if (s > 长) s = 长;
+    if (e > 长) e = 长;
+    if (s > e) s = e;
+    return typeof 对象 === "string" ? 对象.slice(s, e) : 对象.slice(s, e);
+}
+
+
+// ==================== 成员 / 类实例（D-036）====================
+
+function 取成员(对象, 属性, 行, 列) {
+    if (对象 instanceof 实例值) {
+        if (对象.字段.has(属性)) return 对象.字段.get(属性);
+        const 函 = 对象.类.方法表.get(属性);
+        if (函 !== undefined) return new 绑定方法(函, 对象);
+        throw new CNplus错误("CN0302",
+            `${对象.类.名} 里没有「${属性}」这个字段或方法`, 行, 列,
+            `${对象.类.名} 的字段和方法里都找不到这个名字`,
+            "检查名字是不是写错了，或去类定义里看看");
+    }
+    throw new CNplus错误("CN0302",
+        `${属性} 在 ${类型名(对象)} 里不存在`, 行, 列,
+        `这个东西没有叫「${属性}」的成员`,
+        "检查成员名是不是写错了");
+}
+
+
+function 设成员(对象, 属性, 值, 行, 列) {
+    if (对象 instanceof 实例值) {
+        对象.字段.set(属性, 值);
+        return;
+    }
+    throw new CNplus错误("CN0303",
+        `${类型名(对象)} 没法用「.」设置成员`, 行, 列,
+        "「对象.成员 = 值」目前只用于类实例的字段",
+        "检查点号左边是不是一个实例");
+}
+
+
+function 实例化(类, 实参们, 关键字们, 行, 列) {
+    const 实例 = new 实例值(类, new Map());
+    const 初 = 类.方法表.get("__初始化__");
+    if (初 === undefined) {
+        if (实参们.length > 0 || 关键字们.length > 0) {
+            throw new CNplus错误("CN0306",
+                `${类.名} 没有写「初始化」，不需要参数，给了 ${实参们.length} 个`,
+                行, 列,
+                "类没定义初始化，造它的时候括号里不用填东西",
+                `直接写 ${类.名}()`);
+        }
+        return 实例;
+    }
+    const 局部 = _绑定(初, 实参们, 关键字们, 行, 列);
+    for (const p of 初.形参们) {
+        实例.字段.set(p, 局部.表.has(p) ? 局部.表.get(p) : null);
+    }
+    局部.声明("自己", 实例);
+    初.实现(局部);
+    return 实例;
+}
+
+
+const _可点方法 = new Set([
+    "追加", "插入", "移除", "弹出", "排序", "倒序", "包含", "连接", "长度",
+    "所有标签", "所有值", "有标签", "删标签",
+    "分割", "替换", "查找", "去空白", "大写", "小写", "开头是", "结尾是",
+]);
+
+
+function 点调用(全局, 对象, 方法名, 实参们, 关键字们, 行, 列) {
+    if ((Array.isArray(对象) || 对象 instanceof Map || typeof 对象 === "string")
+        && _可点方法.has(方法名)) {
+        const 函数 = 内置们[方法名];
+        if (函数 !== undefined) {
+            return 函数(对象, ...实参们);
+        }
+    }
+    const 成员 = 取成员(对象, 方法名, 行, 列);
+    return 调用(成员, 实参们, 关键字们, 行, 列);
+}
+
+
+// ==================== 调用 ====================
 
 function 调用(被调, 实参们, 关键字们, 行, 列) {
+    if (被调 instanceof 类值) {
+        return 实例化(被调, 实参们, 关键字们, 行, 列);
+    }
+    if (被调 instanceof 绑定方法) {
+        const 局部 = _绑定(被调.函, 实参们, 关键字们, 行, 列);
+        局部.声明("自己", 被调.实例);
+        return 被调.函.实现(局部);
+    }
     if (被调 instanceof 函数值) {
         const 局部 = _绑定(被调, 实参们, 关键字们, 行, 列);
         return 被调.实现(局部);
@@ -500,18 +738,165 @@ function _绑定(被调, 实参们, 关键字们, 行, 列) {
 }
 
 
-// ==================== 内置函数（T3 最小集）====================
+// ==================== 内置函数 ====================
 
 function _内置_打印(...值们) {
     console.log(值们.map(v => 显示(v)).join(" "));
 }
 
 
+function _转整数(a) {
+    a = 拆小数(a);
+    if (typeof a === "number" && Number.isInteger(a)) return a;
+    if (typeof a === "string" || typeof a === "number") {
+        const n = Number.parseInt(a, 10);
+        if (!Number.isNaN(n) && String(n) === String(a).trim()) {
+            校验整数(n, 0, 0);
+            return n;
+        }
+    }
+    throw new CNplus错误("CN0303", `没法把 ${显示(a)} 变成整数`, 0, 0);
+}
+
+
+function _转小数(a) {
+    a = 拆小数(a);
+    if (typeof a === "number") return 标记小数(a);
+    if (typeof a === "string") {
+        const n = Number(a.trim());
+        if (!Number.isNaN(n)) return 标记小数(n);
+    }
+    throw new CNplus错误("CN0303", `没法把 ${显示(a)} 变成小数`, 0, 0);
+}
+
+
+function _范围(...参数) {
+    const 们 = 参数.map(x => Math.trunc(拆小数(x)));
+    if (们.length === 1) {
+        const 出 = [];
+        for (let i = 0; i < 们[0]; i++) 出.push(i);
+        return 出;
+    }
+    if (们.length === 2) {
+        const 出 = [];
+        for (let i = 们[0]; i < 们[1]; i++) 出.push(i);
+        return 出;
+    }
+    const 出 = [];
+    for (let i = 们[0]; i < 们[1]; i += 们[2]) 出.push(i);
+    return 出;
+}
+
+
+function _求和(序列) {
+    if (!序列.every(x => 是数(x)))
+        throw new CNplus错误("CN0303", "求和只能用于全是数字的列表", 0, 0);
+    return 序列.reduce((a, b) => a + b, 0);
+}
+
+
+function _询问(提示) {
+    // Node 有 stdin；浏览器侧由宿主替换此实现
+    if (typeof 提示 !== "undefined" && 提示 !== null && 提示 !== undefined) {
+        process.stdout.write(显示(提示));
+    }
+    const 行 = _读一行();
+    return 行 === null ? "" : 行;
+}
+
+
+function _读一行() {
+    // 同步读 stdin 一行；EOF 返回 null（不能返回空串——询问数值会死循环）
+    try {
+        let 块 = "";
+        const 缓冲 = Buffer.alloc(1);
+        while (true) {
+            const n = require("fs").readSync(0, 缓冲, 0, 1);
+            if (n === 0) return 块 === "" ? null : 块;
+            const 字 = 缓冲.toString("utf8");
+            if (字 === "\n") return 块;
+            块 += 字;
+        }
+    } catch (e) {
+        return null;
+    }
+}
+
+
+function _询问数值(提示) {
+    while (true) {
+        if (提示 !== null && 提示 !== undefined) {
+            process.stdout.write(显示(提示));
+        }
+        const 行 = _读一行();
+        if (行 === null) {
+            throw new CNplus错误("CN0310", "还需要一个数字，但输入已经结束了", 0, 0,
+                "程序还想要输入，可是没有更多输入了",
+                "交互运行时直接输入；用管道喂数据时检查是不是给少了");
+        }
+        const 试 = 行.trim();
+        const n = Number(试);
+        if (!Number.isNaN(n) && 试 !== "") {
+            return 试.includes(".") ? 标记小数(n) : 校验整数(n, 0, 0);
+        }
+        console.log(`「${试}」不是数字，请重新输入。`);
+    }
+}
+
+
 const 内置们 = {
     "打印": _内置_打印,
+    "询问": _询问,
+    "询问数值": _询问数值,
     "类型": 类型名,
     "文本": 显示,
+    "整数": _转整数,
+    "小数": _转小数,
+    "长度": (x) => x instanceof Map ? x.size : x.length,
+    "范围": _范围,
+    "随机数": (a, b) => 校验整数(Math.floor(
+        Math.random() * (Math.trunc(拆小数(b)) - Math.trunc(拆小数(a)) + 1))
+        + Math.trunc(拆小数(a)), 0, 0),
+    "绝对值": (a) => Math.abs(拆小数(a)),
+    "最大": (...a) => a.length === 1 ? Math.max(...a[0]) : Math.max(...a),
+    "最小": (...a) => a.length === 1 ? Math.min(...a[0]) : Math.min(...a),
+    "求和": _求和,
+    "四舍五入": (a) => Math.round(拆小数(a)),
+    "平方根": (a) => 标记小数(Math.sqrt(拆小数(a))),
+    "追加": (表, 项) => { 表.push(项); },
+    "插入": (表, 位, 项) => 表.splice(Math.trunc(拆小数(位)), 0, 项),
+    "移除": (表, 项) => {
+        const i = 表.indexOf(项);
+        if (i === -1) throw new CNplus错误("CN0303",
+            `列表里没有 ${显示(项)}`, 0, 0, "检查要移除的东西在不在列表里");
+        表.splice(i, 1);
+    },
+    "弹出": (表, ...a) => a.length ? 表.splice(Math.trunc(拆小数(a[0])), 1)[0] : 表.pop(),
+    "排序": (表) => [...表].sort((a, b) => _排序比较(a, b)),
+    "倒序": (表) => [...表].reverse(),
+    "包含": (容器, 项) => 容器 instanceof Map ? [...容器.keys()].includes(项) : 容器.includes(项),
+    "连接": (表, 隔) => 表.map(x => 显示(x)).join(隔),
+    "所有标签": (字) => [...字.keys()],
+    "所有值": (字) => [...字.values()],
+    "有标签": (字, 标签) => 字.has(标签),
+    "删标签": (字, 标签) => 字.delete(标签),
+    "分割": (文, 分隔符) => 分隔符 !== undefined && 分隔符 !== null
+        ? 文.split(分隔符) : 文.trim().split(/\s+/),
+    "替换": (文, 旧, 新) => 文.split(旧).join(新),
+    "查找": (文, 子) => 文.indexOf(子),
+    "去空白": (文) => 文.trim(),
+    "大写": (文) => 文.toUpperCase(),
+    "小写": (文) => 文.toLowerCase(),
+    "开头是": (文, 前) => 文.startsWith(前),
+    "结尾是": (文, 后) => 文.endsWith(后),
 };
+
+
+function _排序比较(a, b) {
+    a = 拆小数(a); b = 拆小数(b);
+    if (typeof a === "number" && typeof b === "number") return a - b;
+    return String(a) < String(b) ? -1 : String(a) > String(b) ? 1 : 0;
+}
 
 
 function 建全局环境() {
@@ -522,6 +907,27 @@ function 建全局环境() {
         内置环.表.set(名, 值);
     }
     return new 环境(内置环);
+}
+
+
+function 加连接(片段们) {
+    // 格式串 @“…{表达式}…” 的拼接：全部先 显示() 成文字再接
+    return 片段们.join("");
+}
+
+
+function 抛出(说明, 行, 列) {
+    throw new CNplus错误("CN0311", 显示(说明), 行, 列,
+        "这是程序自己用「抛出」制造的错误",
+        "用「尝试 … 捕获」可以接住它");
+}
+
+
+function 不支持导入(模块名, 行, 列) {
+    throw new CNplus错误("CN0303",
+        `JS 运行环境暂不支持「导入」（${模块名}）`, 行, 列,
+        "JS 后端 v1 只覆盖纯 CNplus 程序，导入 Python 库请用默认后端",
+        "把 导入 的部分拆出去，或用 cnp 运行（树遍历）/--python 跑");
 }
 
 

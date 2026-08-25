@@ -16,8 +16,8 @@ from cnplus.source import 源文件
 
 语料根 = Path(__file__).parent / "golden"
 
-# JS 后端已支持特性对应的语料（逐任务点亮；全亮后改为 None = 全部）
-已点亮 = {"0001-打印"}
+# JS 后端已支持全部正常语料（T4-T9 完成后全量点亮）
+已点亮 = {q.parent.name for q in 语料根.glob("*/期望输出.txt")}
 
 
 def node可用() -> bool:
