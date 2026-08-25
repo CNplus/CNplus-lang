@@ -1,86 +1,104 @@
-"""三后端对拍 —— 阶段 4 的核心保险（T1）。
+"""共享语料对拍 —— 多后端语义的发布门槛。
 
-黄金语料用 树遍历 / Python 转译 / JS 转译 三个后端各跑一遍，
-输出逐字一致才算过。JS 后端逐任务点亮，未点亮的语料在
-`已点亮` 集合里登记；全部点亮后删除该集合的逐条登记。
+每个可对拍后端均走「解析 → 检查 → 执行」完整路径。正常语料要求
+无诊断、输出等于期望，子进程后端还必须成功退出；错误语料要求诊断码
+符合期望，已实际启动的子进程必须以失败状态退出。
 """
+from dataclasses import dataclass
 from pathlib import Path
 
 import pytest
 
-from cnplus.backends.python_emit import Python转译后端
-from cnplus.backends.treewalk import 树遍历后端
+from cnplus.backends.base import 后端
+from cnplus.backends.注册表 import 对拍后端们
 from cnplus.checker import 检查
 from cnplus.parser.parser import 解析
 from cnplus.source import 源文件
 
 语料根 = Path(__file__).parent / "golden"
 
-# JS 后端已支持全部正常语料（T4-T9 完成后全量点亮）
-已点亮 = {q.parent.name for q in 语料根.glob("*/期望输出.txt")}
-
-
 def node可用() -> bool:
     import shutil
     return shutil.which("node") is not None
+
+
+def test_对拍后端注册表合法():
+    """新增后端只需登记，不要在每个对拍测试里另写名称或数量。"""
+    登记们 = 对拍后端们()
+    assert 登记们
+    assert len({登记.名称 for 登记 in 登记们}) == len(登记们)
+    assert all(登记.名称 and issubclass(登记.后端类, 后端) for 登记 in 登记们)
+
+
+@dataclass(frozen=True)
+class 运行结果:
+    输出行: list[str]
+    诊断码们: list[str]
+    子进程退出码: int | None
+    子进程错误输出: str
+
+
+def _收集(标记文件: str):
+    return sorted(p.parent for p in 语料根.glob(f"*/{标记文件}"))
+
+
+def 跑_后端(源码: str, 文件名: str, 登记) -> 运行结果:
+    """让每个后端独立走完整前端与执行路径。"""
+    源 = 源文件(源码, 文件名)
+    程, 袋 = 解析(源)
+    if not 袋.有错:
+        检查(程, 袋)
+
+    后 = None
+    if not 袋.有错:
+        后 = 登记.后端类(输出=lambda _: None)
+        后.执行(程, 源, 袋)
+
+    return 运行结果(
+        输出行=[] if 后 is None else 后.输出行,
+        诊断码们=[d.码 for d in 袋],
+        子进程退出码=None if 后 is None else getattr(后, "最后退出码", None),
+        子进程错误输出="" if 后 is None else getattr(后, "最后错误输出", ""),
+    )
 
 
 def _收集正常():
     return sorted(p.parent for p in 语料根.glob("*/期望输出.txt"))
 
 
-def 跑_树遍历(源码: str, 文件名: str) -> list[str]:
-    源 = 源文件(源码, 文件名)
-    程, 袋 = 解析(源)
-    if 袋.有错:
-        return []
-    后 = 树遍历后端(输出=lambda 行: None)
-    后.执行(程, 源, 袋)
-    return 后.输出行
-
-
-def 跑_转译(源码: str, 文件名: str) -> list[str]:
-    源 = 源文件(源码, 文件名)
-    程, 袋 = 解析(源)
-    if 袋.有错:
-        return []
-    出 = []
-    Python转译后端(输出=出.append).执行(程, 源, 袋)
-    return 出
-
-
-def 跑_JS(源码: str, 文件名: str) -> list[str]:
-    """生成 JS → node 执行 → 收集 stdout 行。"""
-    源 = 源文件(源码, 文件名)
-    程, 袋 = 解析(源)
-    if 袋.有错:
-        return []
-    from cnplus.backends.js_emit import 发射 as js发射
-    import subprocess, tempfile, os
-    with tempfile.TemporaryDirectory() as 目录:
-        路径 = Path(目录) / "t.js"
-        js = js发射(程)[0]
-        路径.write_text(js, encoding="utf-8")
-        r = subprocess.run(["node", str(路径)], capture_output=True,
-                           text=True, timeout=30)
-        return [行 for 行 in r.stdout.split("\n") if 行 != ""]
-
-
 @pytest.mark.skipif(not node可用(), reason="本机无 node")
 @pytest.mark.parametrize("用例",
-                         [p for p in _收集正常() if p.name in 已点亮],
+                         _收集正常(),
                          ids=lambda p: p.name)
 def test_三后端对拍(用例: Path):
     源码 = (用例 / "源.cnp").read_text(encoding="utf-8")
-    树 = 跑_树遍历(源码, 用例.name)
-    译 = 跑_转译(源码, 用例.name)
-    js = 跑_JS(源码, 用例.name)
-    assert 树 == 译, f"树遍历 vs Python转译 不一致：\n树:{树}\n译:{译}"
-    assert 树 == js, f"树遍历 vs JS转译 不一致：\n树:{树}\nJS:{js}"
+    期望 = (用例 / "期望输出.txt").read_text(encoding="utf-8").splitlines()
+    for 登记 in 对拍后端们():
+        结果 = 跑_后端(源码, 用例.name, 登记)
+        assert 结果.诊断码们 == [], f"{登记.名称} 不该报错：{结果.诊断码们}"
+        assert 结果.输出行 == 期望, (
+            f"{用例.name}：{登记.名称} 输出不等于期望\n"
+            f"期望: {期望}\n实际: {结果.输出行}")
+        if 登记.是子进程:
+            assert 结果.子进程退出码 == 0, (
+                f"{用例.name}：{登记.名称} 未成功退出\n"
+                f"stderr: {结果.子进程错误输出}")
+
+
+@pytest.mark.skipif(not node可用(), reason="本机无 node")
+@pytest.mark.parametrize("用例", _收集("期望诊断码.txt"), ids=lambda p: p.name)
+def test_三后端错误语料对拍(用例: Path):
+    源码 = (用例 / "源.cnp").read_text(encoding="utf-8")
+    期望码 = (用例 / "期望诊断码.txt").read_text(encoding="utf-8").strip()
+    for 登记 in 对拍后端们():
+        结果 = 跑_后端(源码, 用例.name, 登记)
+        assert 期望码 in 结果.诊断码们, (
+            f"{用例.name}：{登记.名称} 应报 {期望码}，实际 {结果.诊断码们}")
+        if 登记.是子进程 and 结果.子进程退出码 is not None:
+            assert 结果.子进程退出码 != 0, (
+                f"{用例.name}：{登记.名称} 已运行并报告错误，却成功退出")
 
 
 def test_点亮清单合法():
-    """已点亮 必须是真实存在的语料名，防拼错。"""
-    名单 = {p.name for p in _收集正常()}
-    for 名 in 已点亮:
-        assert 名 in 名单, f"已点亮 里有不存在的语料：{名}"
+    """正常语料必须全量进入对拍，不能用临时清单静默排除。"""
+    assert _收集正常()

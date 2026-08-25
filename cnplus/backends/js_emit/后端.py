@@ -24,6 +24,8 @@ class JS转译后端(后端):
         self.输出行: list[str] = []
         self._输出回调 = 输出
         self.最后源码: str = ""
+        self.最后退出码: int | None = None
+        self.最后错误输出: str = ""
 
     def 执行(self, 程: 程序, 源: 源文件, 袋: 诊断袋) -> None:
         源码, _行映射 = 发射(程)
@@ -37,6 +39,8 @@ class JS转译后端(后端):
                                text=True, timeout=30)
         finally:
             Path(路径).unlink(missing_ok=True)
+        self.最后退出码 = r.returncode
+        self.最后错误输出 = r.stderr
         if r.returncode != 0:
             self._处理异常(r.stderr, 源, 袋)
             return
