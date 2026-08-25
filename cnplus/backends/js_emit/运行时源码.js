@@ -304,8 +304,10 @@ function _可比较(左, 右) {
     if (左 === null || 右 === null) return true;
     if (是布尔(左) || 是布尔(右)) return 是布尔(左) && 是布尔(右);
     if (是数(左) && 是数(右)) return true;
-    return typeof 左 === typeof 右
-        && (typeof 左 === "string" || Array.isArray(左) && Array.isArray(右));
+    if (typeof 左 === "string" && typeof 右 === "string") return true;
+    if (Array.isArray(左) && Array.isArray(右)) return true;
+    if (左 instanceof Map && 右 instanceof Map) return true;
+    return false;
 }
 
 
@@ -333,9 +335,8 @@ function _值相等(左, 右) {
         }
         return true;
     }
-    return 左 === right_eq(右, 左);
+    return 左 === 右;
 }
-function right_eq(a, b) { return a === b; }
 
 
 function 不等于(左, 右, 行, 列) {
