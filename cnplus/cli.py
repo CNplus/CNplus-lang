@@ -63,7 +63,7 @@ def 运行(路径: str, 用转译: bool = False) -> int:
     return 0
 
 
-def 编译(路径: str, 目标: str | None = None) -> int:
+def 编译(路径: str, 目标: str | None = None, js: bool = False) -> int:
     源 = _读源(路径)
     if 源 is None:
         return 2
@@ -74,10 +74,17 @@ def 编译(路径: str, 目标: str | None = None) -> int:
         _报诊断(袋, 源)
         print(f"\n发现 {len(袋)} 个问题，未编译。", file=sys.stderr)
         return 1
-    目标路径 = Path(目标) if 目标 else Path(路径).with_suffix(".py")
-    编译到文件(程, 目标路径)
-    print(f"已编译 → {目标路径}")
-    print(f"可独立运行：python3 {目标路径}")
+    if js:
+        from cnplus.backends.js_emit import 编译到文件 as js编译
+        目标路径 = Path(目标) if 目标 else Path(路径).with_suffix(".js")
+        js编译(程, 目标路径)
+        print(f"已编译 → {目标路径}")
+        print(f"可独立运行：node {目标路径}")
+    else:
+        目标路径 = Path(目标) if 目标 else Path(路径).with_suffix(".py")
+        编译到文件(程, 目标路径)
+        print(f"已编译 → {目标路径}")
+        print(f"可独立运行：python3 {目标路径}")
     return 0
 
 
@@ -161,7 +168,9 @@ def main(参数: list[str] | None = None) -> int:
         if len(参数) < 2:
             print("错误：编译 需要一个文件名", file=sys.stderr)
             return 2
-        return 编译(参数[1], 参数[2] if len(参数) > 2 else None)
+        js = "--js" in 参数
+        位置参数 = [a for a in 参数[1:] if not a.startswith("--")]
+        return 编译(位置参数[0], 位置参数[1] if len(位置参数) > 1 else None, js=js)
     # 运行 支持 --python 转译后端
     if 命令 == "运行":
         if len(参数) >= 2 and 参数[1] in ("--python", "-p", "--转译"):
