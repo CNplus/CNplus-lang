@@ -2,7 +2,7 @@
   "name": "cnplus",
   "displayName": "CNplus",
   "description": "CNplus 中文编程语言支持：语法高亮、实时诊断、一键运行",
-  "version": "1.0.1",
+  "version": "1.1.0",
   "publisher": "cnplus",
   "engines": {
     "vscode": "^1.75.0"
