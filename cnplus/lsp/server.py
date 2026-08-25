@@ -25,6 +25,13 @@ from cnplus.source import 源文件
 服务器 = LanguageServer("cnplus-lsp", __version__)
 
 
+def _文档与位置(ls: LanguageServer, uri: str, pos) -> tuple[str, int, int]:
+    """取文档文本和 1 起行列。"""
+    文档 = ls.workspace.get_text_document(uri)
+    行0, 列0 = pos.line, pos.character
+    return 文档.source, 行0 + 1, 列0 + 1
+
+
 def 转诊断(诊, 源: 源文件) -> lsp.Diagnostic:
     """CNplus 诊断 -> LSP 诊断。行列从 1 起转成从 0 起。"""
     起 = lsp.Position(line=诊.跨.起.行 - 1, character=max(诊.跨.起.列 - 1, 0))
@@ -76,6 +83,46 @@ def 变更(ls: LanguageServer, 参数: lsp.DidChangeTextDocumentParams) -> None:
 @服务器.feature(lsp.TEXT_DOCUMENT_DID_SAVE)
 def 保存(ls: LanguageServer, 参数: lsp.DidSaveTextDocumentParams) -> None:
     _检查并推送(ls, 参数.text_document.uri)
+
+
+# ==================== 补全 / 悬停 / 跳转（阶段 3 收尾） ====================
+
+@服务器.feature(lsp.TEXT_DOCUMENT_COMPLETION)
+def 补全(ls: LanguageServer, 参数: lsp.CompletionParams) -> lsp.CompletionList:
+    from cnplus.lsp import 补全 as 补全模块
+    码, 行, 列 = _文档与位置(ls, 参数.text_document.uri, 参数.position)
+    项们 = 补全模块.补全于(码, 行, 列)
+    return lsp.CompletionList(is_incomplete=False, items=项们)
+
+
+@服务器.feature(lsp.TEXT_DOCUMENT_HOVER)
+def 悬停(ls: LanguageServer, 参数: lsp.HoverParams) -> lsp.Hover | None:
+    from cnplus.lsp import 悬停 as 悬停模块
+    码, 行, 列 = _文档与位置(ls, 参数.text_document.uri, 参数.position)
+    文本 = 悬停模块.悬停于(码, 行, 列)
+    if 文本 is None:
+        return None
+    return lsp.Hover(contents=lsp.MarkupContent(kind=lsp.MarkupKind.Markdown,
+                                                value=文本))
+
+
+@服务器.feature(lsp.TEXT_DOCUMENT_DEFINITION)
+def 跳转定义(ls: LanguageServer,
+             参数: lsp.DefinitionParams) -> lsp.Location | None:
+    from cnplus.lsp import 跳转 as 跳转模块
+    uri = 参数.text_document.uri
+    码, 行, 列 = _文档与位置(ls, uri, 参数.position)
+    位置 = 跳转模块.定义于(码, 行, 列)
+    if 位置 is None:
+        return None
+    行, 列 = 位置
+    return lsp.Location(
+        uri=uri,
+        range=lsp.Range(
+            start=lsp.Position(line=行 - 1, character=列 - 1),
+            end=lsp.Position(line=行 - 1, character=列 - 1 + 2),
+        ),
+    )
 
 
 def main() -> None:
