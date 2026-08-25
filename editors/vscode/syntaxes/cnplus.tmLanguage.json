@@ -67,7 +67,7 @@
     },
     {
       "name": "keyword.operator.logical.cnplus",
-      "match": "并且|或者|与|或|非|不"
+      "match": "并且|或者|与|且|或|非|不"
     },
     {
       "name": "keyword.other.cnplus",
