@@ -280,7 +280,9 @@ function 取余(左, 右, 行, 列) {
     if (右 === 0) {
         throw new CNplus错误("CN0304", "除数不能是零", 行, 列);
     }
-    return 左 % 右;
+    // JS 的 % 是向零截断后的余数；CNplus 的 // 是向下取整，
+    // 所以余数也必须由 左 = 右 * (左 // 右) + 余 推导。
+    return 左 - Math.floor(左 / 右) * 右;
 }
 
 
@@ -501,15 +503,16 @@ function 取索引(对象, 下标, 行, 列) {
                 `下标必须是整数，这里是${类型名(下标)}`, 行, 列,
                 "方括号里要写「第几个」，用整数（负数表示从尾数）");
         }
+        const 项们 = typeof 对象 === "string" ? [...对象] : 对象;
         let i = 下标;
-        if (i < 0) i += 对象.length;
-        if (i < 0 || i >= 对象.length) {
+        if (i < 0) i += 项们.length;
+        if (i < 0 || i >= 项们.length) {
             throw new CNplus错误("CN0308",
-                `下标 ${显示(下标)} 超出范围（一共 ${对象.length} 个）`, 行, 列,
+                `下标 ${显示(下标)} 超出范围（一共 ${项们.length} 个）`, 行, 列,
                 "列表下标从 0 开始，最大是「长度 - 1」",
                 "用「长度(…)」看有多少个");
         }
-        return 对象[i];
+        return 项们[i];
     }
     if (对象 instanceof Map) {
         if (!对象.has(下标)) {
@@ -576,7 +579,8 @@ function 取切片(对象, 起, 止, 行, 列) {
             "只有列表和文字能用 [起:止] 截一段",
             "检查这个东西的类型");
     }
-    const 长 = 对象.length;
+    const 项们 = typeof 对象 === "string" ? [...对象] : 对象;
+    const 长 = 项们.length;
     const 端点 = (值, 缺省) => {
         if (值 === null || 值 === undefined) return 缺省;
         值 = 拆小数(值);
@@ -595,7 +599,8 @@ function 取切片(对象, 起, 止, 行, 列) {
     if (s > 长) s = 长;
     if (e > 长) e = 长;
     if (s > e) s = e;
-    return typeof 对象 === "string" ? 对象.slice(s, e) : 对象.slice(s, e);
+    const 片段 = 项们.slice(s, e);
+    return typeof 对象 === "string" ? 片段.join("") : 片段;
 }
 
 
@@ -853,7 +858,8 @@ const 内置们 = {
     "文本": 显示,
     "整数": _转整数,
     "小数": _转小数,
-    "长度": (x) => x instanceof Map ? x.size : x.length,
+    "长度": (x) => x instanceof Map ? x.size :
+        typeof x === "string" ? [...x].length : x.length,
     "范围": _范围,
     "随机数": (a, b) => 校验整数(Math.floor(
         Math.random() * (Math.trunc(拆小数(b)) - Math.trunc(拆小数(a)) + 1))
