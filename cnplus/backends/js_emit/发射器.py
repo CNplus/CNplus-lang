@@ -304,7 +304,7 @@ class 发射器:
     def _表达式(self, e: 表达式, 环名: str) -> str:
         行, 列 = self._位置(e.跨)
         if isinstance(e, 整数字面量):
-            return str(e.值)
+            return f"{e.值}n"
         if isinstance(e, 小数字面量):
             # 小数标记：JS 的 2 与 2.0 同值，包标记保住类型信息
             return f"标记小数({e.值!r})"

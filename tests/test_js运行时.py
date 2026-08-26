@@ -5,7 +5,7 @@
 - 严格真值
 - 环境链
 - 显示的真/假/空
-- 整数安全边界
+- BigInt 任意精度整数
 """
 import json
 import shutil
@@ -41,20 +41,20 @@ def test_显示_空():
     assert node跑("console.log(显示(null))") == "空\n"
 
 def test_显示_整数():
-    assert node跑("console.log(显示(3))") == "3\n"
+    assert node跑("console.log(显示(3n))") == "3\n"
 
 def test_显示_小数():
     assert node跑("console.log(显示(3.5))") == "3.5\n"
 
 def test_显示_除法恒小数():
     """JS 原生 4/2 === 2（整数）——运行时必须显示成 2.0。"""
-    assert node跑("console.log(显示(除(4, 2, 0, 0)))") == "2.0\n"
+    assert node跑("console.log(显示(除(4n, 2n, 0, 0)))") == "2.0\n"
 
 def test_显示_负零():
     assert node跑("console.log(显示(-0))") == "0\n"
 
 def test_显示_列表():
-    assert node跑("console.log(显示([1, 2, 3]))") == "[1, 2, 3]\n"
+    assert node跑("console.log(显示([1n, 2n, 3n]))") == "[1, 2, 3]\n"
 
 def test_显示_列表含小数():
     assert node跑("console.log(显示([标记小数(2)]))") == "[2.0]\n"
@@ -62,7 +62,7 @@ def test_显示_列表含小数():
 
 def test_除法结果是小数标记():
     """除法结果即使整除也是小数——显示 2.0，类型名 小数。"""
-    assert node跑("console.log(类型名(除(4, 2, 0, 0)))") == "小数\n"
+    assert node跑("console.log(类型名(除(4n, 2n, 0, 0)))") == "小数\n"
 
 def test_显示_字符串():
     assert node跑("console.log(显示('你好'))") == "你好\n"
@@ -71,7 +71,7 @@ def test_显示_字符串():
 # ==================== 类型名 ====================
 
 def test_类型名():
-    assert node跑("console.log(类型名(3))") == "整数\n"
+    assert node跑("console.log(类型名(3n))") == "整数\n"
     assert node跑("console.log(类型名(3.5))") == "小数\n"
     assert node跑("console.log(类型名(标记小数(2)))") == "小数\n"
     assert node跑("console.log(类型名(true))") == "布尔\n"
@@ -84,7 +84,36 @@ def test_类型名():
 # ==================== 运算语义 ====================
 
 def test_除_恒小数():
-    assert node跑("console.log(拆小数(除(4, 2, 0, 0)))") == "2\n"  # 数值是 2，类型/显示层负责 .0
+    assert node跑("console.log(拆小数(除(4n, 2n, 0, 0)))") == "2\n"  # 数值是 2，类型/显示层负责 .0
+
+def test_BigInt真除_IEEE754边界按位一致():
+    """覆盖次正规、向正常数进位、溢出中点及带符号下溢。"""
+    assert node跑(r"""
+function 位样式(x) {
+    const 缓冲 = new ArrayBuffer(8);
+    const 视图 = new DataView(缓冲);
+    视图.setFloat64(0, x, false);
+    return 视图.getBigUint64(0, false).toString(16).padStart(16, '0');
+}
+const 用例 = [
+    [1n, 1n << 1074n],
+    [1n, 1n << 1075n],
+    [-1n, 1n << 1074n],
+    [-1n, 1n << 1075n],
+    [(1n << 53n) - 1n, 1n << 1075n],
+    [(((1n << 54n) - 1n) << 970n) - 1n, 1n],
+    [((1n << 54n) - 1n) << 970n, 1n],
+];
+for (const [左, 右] of 用例) console.log(位样式(_BigInt真除(左, 右)));
+""") == """0000000000000001
+0000000000000000
+8000000000000001
+8000000000000000
+0010000000000000
+7fefffffffffffff
+7ff0000000000000
+"""
+
 
 def test_除_除零报错():
     r = subprocess.run(["node", "-e", 运行时.read_text(encoding='utf-8')
@@ -114,17 +143,22 @@ def test_等于_跨类型报错():
     assert r.stdout.strip() == "CN0303"
 
 
-# ==================== 整数安全边界 ====================
+# ==================== 任意精度整数 ====================
 
 def test_整数_超出安全范围报错():
-    """2^53 失真——运行时必须拒绝而不是悄悄给错值。"""
+    """已经失真的 JS Number 不能再冒充 CNplus 整数。"""
     r = subprocess.run(["node", "-e", 运行时.read_text(encoding='utf-8')
                         + "\ntry { 校验整数(9007199254740993, 0, 0) } catch (e) { console.log(e.码) }"],
                        capture_output=True, text=True, timeout=30)
     assert r.stdout.strip() == "CN0303"
 
 def test_整数_安全范围内通过():
-    assert node跑("console.log(校验整数(9007199254740991, 0, 0))") == "9007199254740991\n"
+    assert node跑("console.log(显示(校验整数(9007199254740991, 0, 0)))") == "9007199254740991\n"
+
+
+def test_整数_BigInt超过旧安全边界仍精确():
+    assert node跑("console.log(显示(加(9007199254740992n, 1n, 0, 0)))") == \
+        "9007199254740993\n"
 
 
 # ==================== 环境链 ====================

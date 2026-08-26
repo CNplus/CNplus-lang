@@ -5,12 +5,11 @@
 // / 恒为小数、块级作用域）。
 //
 // 这个模块是自包含的：不 import 任何东西，直接内联进生成的
-// .js 文件，可在 node 与浏览器（ES5+）下独立运行。
+// .js 文件，可在支持 BigInt 的 node 与现代浏览器中独立运行。
 //
 // 数字语义防御（与 Python 后端的关键差异点）：
-// - JS Number 是 64 位浮点，4/2 得整数 2 —— 显示层负责把
-//   「值为整数的浮点数」渲染成 x.0（除法结果恒走浮点标记）
-// - 整数超过 ±(2^53-1) 会失真 —— 校验整数 主动报 CN0303
+// - CNplus 整数统一使用 BigInt，保持任意精度
+// - CNplus 小数使用 Number + 小数值标记，保留 2.0 的类型信息
 // - -0 / NaN / Infinity 一律在入口拦截
 //
 // 抛出的 CNplus错误 带 (行, 列)，由生成代码映射回 .cnp 跨度。
@@ -35,9 +34,6 @@ class CNplus错误 extends Error {
 
 const 缺省 = { toString() { return "<缺省>"; } };
 
-const 安全整数上限 = 9007199254740991;  // 2^53 - 1
-
-
 class 小数值 {
     // JS 的 Number 层面 2 与 2.0 是同一个值，「这是小数」的信息
     // 在 JS 里原则上不存在。CNplus 语义要求 整数2 ≠ 小数2.0，
@@ -49,7 +45,13 @@ class 小数值 {
 
 
 function 标记小数(v) {
-    return v instanceof 小数值 ? v : new 小数值(v);
+    if (v instanceof 小数值) return v;
+    if (typeof v === "bigint") v = Number(v);
+    if (typeof v !== "number" || !Number.isFinite(v)) {
+        throw new CNplus错误("CN0303", "小数超出了能表示的范围", 0, 0,
+            "小数采用 IEEE 754 双精度，过大的整数不能转换成有限小数");
+    }
+    return new 小数值(v);
 }
 
 
@@ -61,24 +63,19 @@ function 拆小数(v) {
 function 是布尔(v) { return typeof v === "boolean"; }
 function 是数(v) {
     v = 拆小数(v);
-    return typeof v === "number" && Number.isFinite(v);
+    return typeof v === "bigint" || typeof v === "number" && Number.isFinite(v);
 }
 function 是整数(v) {
-    v = 拆小数(v);
-    return typeof v === "number" && Number.isInteger(v);
+    return typeof v === "bigint";
 }
 
 
 function 校验整数(v, 行, 列) {
-    if (!是整数(v) || Math.abs(v) > 安全整数上限) {
-        if (是数(v) && Number.isInteger(v) && Math.abs(v) > 安全整数上限) {
-            throw new CNplus错误("CN0303",
-                "数字太大，超出了能精确表示的范围（约 9 千万亿）", 行, 列,
-                "JS 环境里整数超过 2^53-1 会悄悄失真，CNplus 直接报错",
-                "改用小数，或把数值控制在安全范围内");
-        }
-    }
-    return v;
+    if (typeof v === "bigint") return v;
+    if (typeof v === "number" && Number.isSafeInteger(v)) return BigInt(v);
+    throw new CNplus错误("CN0303", "这里需要一个整数", 行, 列,
+        "整数不能带小数部分，也不能来自已经失真的 JS Number",
+        "使用整数写法，或先用「整数(…)」转换");
 }
 
 
@@ -114,6 +111,7 @@ function 显示(值) {
         const v = 值.值;
         return Object.is(v, -0) ? "0" : 显示小数(v);
     }
+    if (typeof 值 === "bigint") return String(值);
     if (typeof 值 === "number") {
         if (Object.is(值, -0)) return "0";
         if (Number.isInteger(值)) return String(值);
@@ -190,11 +188,13 @@ function 条件(值, 行, 列) {
 
 
 function 负(值, 行, 列) {
-    值 = 拆小数(值);
     if (是布尔(值) || !是数(值)) {
         throw new CNplus错误("CN0303",
             `负号只能用于数字，这里是${类型名(值)}`, 行, 列,
             `${类型名(值)}没法取负数`);
+    }
+    if (值 instanceof 小数值 || typeof 值 === "number") {
+        return 标记小数(-Number(拆小数(值)));
     }
     return -值;
 }
@@ -212,14 +212,9 @@ function 非(值, 行, 列) {
 
 
 function 加(左, 右, 行, 列) {
-    左 = 拆小数(左); 右 = 拆小数(右);
     if (typeof 左 === "string" && typeof 右 === "string") return 左 + 右;
-    if (!(是数(左) && 是数(右))) {
-        throw new CNplus错误("CN0303",
-            `「+」不能用于${类型名(左)}和${类型名(右)}`, 行, 列,
-            "「+」要么把两个数字相加，要么把两段文字接起来，不能一边数字一边文字",
-            `把数字转成文字再接起来：… + 文本(${显示(是数(左) ? 右 : 左)})`);
-    }
+    [左, 右] = _两数("+", 左, 右, 行, 列);
+    if (_有小数(左, 右)) return 标记小数(_到Number(左) + _到Number(右));
     return 左 + 右;
 }
 
@@ -235,70 +230,142 @@ function _两数(运, 左, 右, 行, 列) {
 }
 
 
+function _有小数(...值们) {
+    return 值们.some(v => v instanceof 小数值 || typeof v === "number");
+}
+
+
+function _到Number(v) {
+    return Number(拆小数(v));
+}
+
+
+function _整数向下商(左, 右) {
+    let 商 = 左 / 右;
+    const 余 = 左 % 右;
+    if (余 !== 0n && (左 < 0n) !== (右 < 0n)) 商 -= 1n;
+    return 商;
+}
+
+
+function _向偶数舍入商(分子, 分母) {
+    let 商 = 分子 / 分母;
+    const 余数 = 分子 % 分母;
+    const 两倍余数 = 余数 * 2n;
+    if (两倍余数 > 分母 || (两倍余数 === 分母 && 商 % 2n !== 0n)) 商 += 1n;
+    return 商;
+}
+
+
+function _BigInt真除(左, 右) {
+    const 负数 = (左 < 0n) !== (右 < 0n);
+    let 分子 = 左 < 0n ? -左 : 左;
+    const 分母 = 右 < 0n ? -右 : 右;
+    if (分子 === 0n) return 0;
+
+    const 分子位数 = 分子.toString(2).length;
+    const 分母位数 = 分母.toString(2).length;
+    const 位差 = 分子位数 - 分母位数;
+    let 指数 = 位差;
+    if (位差 >= 0) {
+        if (分子 < (分母 << BigInt(位差))) 指数 -= 1;
+    } else if ((分子 << BigInt(-位差)) < 分母) {
+        指数 -= 1;
+    }
+
+    let 尾数;
+    let 二次方;
+    if (指数 < -1022) {
+        尾数 = _向偶数舍入商(分子 << 1074n, 分母);
+        二次方 = -1074;
+    } else {
+        const 位移 = 52 - 指数;
+        尾数 = 位移 >= 0
+            ? _向偶数舍入商(分子 << BigInt(位移), 分母)
+            : _向偶数舍入商(分子, 分母 << BigInt(-位移));
+        if (尾数 === 2n ** 53n) {
+            尾数 >>= 1n;
+            指数 += 1;
+        }
+        if (指数 > 1023) return 负数 ? -Infinity : Infinity;
+        二次方 = 指数 - 52;
+    }
+    const 结果 = Number(尾数) * 2 ** 二次方;
+    return 负数 ? -结果 : 结果;
+}
+
+
 function 减(左, 右, 行, 列) {
-    左 = 拆小数(左); 右 = 拆小数(右);
     [左, 右] = _两数("-", 左, 右, 行, 列);
+    if (_有小数(左, 右)) return 标记小数(_到Number(左) - _到Number(右));
     return 左 - 右;
 }
 
 
 function 乘(左, 右, 行, 列) {
-    左 = 拆小数(左); 右 = 拆小数(右);
-    if (typeof 左 === "string" && 是数(右)) return 左.repeat(Math.trunc(右));
-    if (typeof 右 === "string" && 是数(左)) return 右.repeat(Math.trunc(左));
+    if (typeof 左 === "string" && 是数(右)) return 左.repeat(Math.trunc(_到Number(右)));
+    if (typeof 右 === "string" && 是数(左)) return 右.repeat(Math.trunc(_到Number(左)));
     [左, 右] = _两数("*", 左, 右, 行, 列);
+    if (_有小数(左, 右)) return 标记小数(_到Number(左) * _到Number(右));
     return 左 * 右;
 }
 
 
 function 除(左, 右, 行, 列) {
-    左 = 拆小数(左); 右 = 拆小数(右);
     [左, 右] = _两数("/", 左, 右, 行, 列);
-    if (右 === 0) {
+    if (拆小数(右) === 0 || 拆小数(右) === 0n) {
         throw new CNplus错误("CN0304", "除数不能是零", 行, 列,
             "东西没法平均分给 0 个人，这在数学上没有答案",
             "把除数改成非零的数");
     }
     // 语义约定：/ 恒为小数。结果包 小数值 标记，显示层渲染 x.0。
-    return 标记小数(左 / 右);
+    const 商 = typeof 左 === "bigint" && typeof 右 === "bigint"
+        ? _BigInt真除(左, 右)
+        : _到Number(左) / _到Number(右);
+    return 标记小数(商);
 }
 
 
 function 整除(左, 右, 行, 列) {
-    左 = 拆小数(左); 右 = 拆小数(右);
     [左, 右] = _两数("//", 左, 右, 行, 列);
-    if (右 === 0) {
+    if (拆小数(右) === 0 || 拆小数(右) === 0n) {
         throw new CNplus错误("CN0304", "除数不能是零", 行, 列);
     }
-    return Math.floor(左 / 右);
+    if (_有小数(左, 右)) {
+        return 标记小数(Math.floor(_到Number(左) / _到Number(右)));
+    }
+    return _整数向下商(左, 右);
 }
 
 
 function 取余(左, 右, 行, 列) {
-    左 = 拆小数(左); 右 = 拆小数(右);
     [左, 右] = _两数("%", 左, 右, 行, 列);
-    if (右 === 0) {
+    if (拆小数(右) === 0 || 拆小数(右) === 0n) {
         throw new CNplus错误("CN0304", "除数不能是零", 行, 列);
     }
-    // JS 的 % 是向零截断后的余数；CNplus 的 // 是向下取整，
+    // JS 的 BigInt % 是向零截断后的余数；CNplus 的 // 是向下取整，
     // 所以余数也必须由 左 = 右 * (左 // 右) + 余 推导。
-    return 左 - Math.floor(左 / 右) * 右;
+    if (_有小数(左, 右)) {
+        const 左数 = _到Number(左); const 右数 = _到Number(右);
+        return 标记小数(左数 - Math.floor(左数 / 右数) * 右数);
+    }
+    return 左 - _整数向下商(左, 右) * 右;
 }
 
 
 function 幂(左, 右, 行, 列) {
-    左 = 拆小数(左); 右 = 拆小数(右);
     if (!(是数(左) && 是数(右))) {
         throw new CNplus错误("CN0303",
             `「**」不能用于${类型名(左)}和${类型名(右)}`, 行, 列,
             "幂运算两边都得是数字", "检查两边的类型");
     }
-    const 结 = 左 ** 右;
+    if (!_有小数(左, 右) && 右 >= 0n) return 左 ** 右;
+    const 结 = _到Number(左) ** _到Number(右);
     if (!Number.isFinite(结)) {
         throw new CNplus错误("CN0303", "幂运算出错：结果太大", 行, 列,
             "结果太大或没有意义");
     }
-    return 结;
+    return 标记小数(结);
 }
 
 
@@ -326,6 +393,16 @@ function 等于(左, 右, 行, 列) {
 
 
 function _值相等(左, 右) {
+    if (是数(左) && 是数(右)) {
+        左 = 拆小数(左); 右 = 拆小数(右);
+        if (typeof 左 === "bigint" && typeof 右 === "number") {
+            return Number.isInteger(右) && 左 === BigInt(右);
+        }
+        if (typeof 左 === "number" && typeof 右 === "bigint") {
+            return Number.isInteger(左) && BigInt(左) === 右;
+        }
+        return 左 === 右;
+    }
     if (Array.isArray(左) && Array.isArray(右)) {
         if (左.length !== 右.length) return false;
         return 左.every((v, i) => _值相等(v, 右[i]));
@@ -462,7 +539,10 @@ function 自增值(旧, 增量, 行, 列) {
         throw new CNplus错误("CN0303", `${类型名(旧)}不能自增/自减`, 行, 列,
             "++ 和 -- 只能用于数字", "确认这个变量是数字");
     }
-    return 拆小数(旧) + 增量;
+    if (旧 instanceof 小数值 || typeof 旧 === "number") {
+        return 标记小数(_到Number(旧) + 增量);
+    }
+    return 旧 + BigInt(增量);
 }
 
 
@@ -495,31 +575,57 @@ function 遍历项(可迭代, 行, 列) {
 
 // ==================== 集合：索引 / 切片 / 字典 ====================
 
-function 取索引(对象, 下标, 行, 列) {
+function _字典标签(标签) {
+    const 值 = 拆小数(标签);
+    if (typeof 值 === "number" && Number.isInteger(值)) return BigInt(值);
+    return 值;
+}
+
+
+function _序列下标(下标, 长, 行, 列, 是赋值 = false) {
+    if (下标 instanceof 小数值) {
+        throw new CNplus错误("CN0303",
+            `下标必须是整数，这里是${类型名(下标)}`, 行, 列,
+            "方括号里要写「第几个」，用整数（负数表示从尾数）");
+    }
     下标 = 拆小数(下标);
-    if (Array.isArray(对象) || typeof 对象 === "string") {
-        if (!Number.isInteger(下标)) {
-            throw new CNplus错误("CN0303",
-                `下标必须是整数，这里是${类型名(下标)}`, 行, 列,
-                "方括号里要写「第几个」，用整数（负数表示从尾数）");
-        }
-        const 项们 = typeof 对象 === "string" ? [...对象] : 对象;
-        let i = 下标;
-        if (i < 0) i += 项们.length;
-        if (i < 0 || i >= 项们.length) {
-            throw new CNplus错误("CN0308",
-                `下标 ${显示(下标)} 超出范围（一共 ${项们.length} 个）`, 行, 列,
+    let 位置;
+    if (typeof 下标 === "bigint") {
+        位置 = 下标;
+    } else if (typeof 下标 === "number" && Number.isInteger(下标)) {
+        位置 = BigInt(下标);
+    } else {
+        throw new CNplus错误("CN0303",
+            `下标必须是整数，这里是${类型名(下标)}`, 行, 列,
+            "方括号里要写「第几个」，用整数（负数表示从尾数）");
+    }
+    const 长整数 = BigInt(长);
+    if (位置 < 0n) 位置 += 长整数;
+    if (位置 < 0n || 位置 >= 长整数) {
+        throw new CNplus错误("CN0308",
+            是赋值 ? `下标 ${显示(下标)} 超出范围` :
+                `下标 ${显示(下标)} 超出范围（一共 ${长} 个）`, 行, 列,
+            是赋值 ? "这个位置不存在，没法往那里放东西" :
                 "列表下标从 0 开始，最大是「长度 - 1」",
-                "用「长度(…)」看有多少个");
-        }
+            是赋值 ? "列表下标从 0 开始" : "用「长度(…)」看有多少个");
+    }
+    return Number(位置);
+}
+
+
+function 取索引(对象, 下标, 行, 列) {
+    if (Array.isArray(对象) || typeof 对象 === "string") {
+        const 项们 = typeof 对象 === "string" ? [...对象] : 对象;
+        const i = _序列下标(下标, 项们.length, 行, 列);
         return 项们[i];
     }
     if (对象 instanceof Map) {
-        if (!对象.has(下标)) {
+        const 标签 = _字典标签(下标);
+        if (!对象.has(标签)) {
             throw new CNplus错误("CN0308", `字典里没有标签 ${显示(下标)}`, 行, 列,
                 "这个标签不在字典里", "检查标签是不是写错了");
         }
-        return 对象.get(下标);
+        return 对象.get(标签);
     }
     throw new CNplus错误("CN0303", `${类型名(对象)}不能用下标取值`, 行, 列,
         "只有列表、字典和文字能用 […] 取里面的东西",
@@ -528,25 +634,13 @@ function 取索引(对象, 下标, 行, 列) {
 
 
 function 设索引(对象, 下标, 值, 行, 列) {
-    下标 = 拆小数(下标);
     if (Array.isArray(对象)) {
-        if (!Number.isInteger(下标)) {
-            throw new CNplus错误("CN0303",
-                `下标必须是整数，这里是${类型名(下标)}`, 行, 列);
-        }
-        let i = 下标;
-        if (i < 0) i += 对象.length;
-        if (i < 0 || i >= 对象.length) {
-            throw new CNplus错误("CN0308",
-                `下标 ${显示(下标)} 超出范围`, 行, 列,
-                "这个位置不存在，没法往那里放东西",
-                "列表下标从 0 开始");
-        }
+        const i = _序列下标(下标, 对象.length, 行, 列, true);
         对象[i] = 值;
         return;
     }
     if (对象 instanceof Map) {
-        对象.set(下标, 值);
+        对象.set(_字典标签(下标), 值);
         return;
     }
     throw new CNplus错误("CN0303", `${类型名(对象)}不能用下标赋值`, 行, 列,
@@ -558,8 +652,8 @@ function 设索引(对象, 下标, 值, 行, 列) {
 function 造字典(键值对, 行, 列) {
     const 出 = new Map();
     for (const [键, 值] of 键值对) {
-        const k = 拆小数(键);
-        if (!(typeof k === "string" || Number.isInteger(k)
+        const k = _字典标签(键);
+        if (!(typeof k === "string" || typeof k === "bigint" || Number.isInteger(k)
               || typeof k === "boolean" || k === null)) {
             throw new CNplus错误("CN0303",
                 `${类型名(键)}不能作字典的标签`, 行, 列,
@@ -584,6 +678,13 @@ function 取切片(对象, 起, 止, 行, 列) {
     const 端点 = (值, 缺省) => {
         if (值 === null || 值 === undefined) return 缺省;
         值 = 拆小数(值);
+        if (typeof 值 === "bigint") {
+            const 长整数 = BigInt(长);
+            if (值 < 0n) 值 += 长整数;
+            if (值 < 0n) return 0;
+            if (值 > 长整数) return 长;
+            return Number(值);
+        }
         if (typeof 值 !== "number" || !Number.isInteger(值)) {
             throw new CNplus错误("CN0303",
                 `切片的起止必须是整数，这里是${类型名(值)}`, 行, 列,
@@ -753,13 +854,10 @@ function _内置_打印(...值们) {
 
 function _转整数(a) {
     a = 拆小数(a);
-    if (typeof a === "number" && Number.isInteger(a)) return a;
-    if (typeof a === "string" || typeof a === "number") {
-        const n = Number.parseInt(a, 10);
-        if (!Number.isNaN(n) && String(n) === String(a).trim()) {
-            校验整数(n, 0, 0);
-            return n;
-        }
+    if (typeof a === "bigint") return a;
+    if (typeof a === "number" && Number.isInteger(a)) return BigInt(a);
+    if (typeof a === "string" && /^[+-]?\d+$/.test(a.trim())) {
+        return BigInt(a.trim());
     }
     throw new CNplus错误("CN0303", `没法把 ${显示(a)} 变成整数`, 0, 0);
 }
@@ -767,7 +865,7 @@ function _转整数(a) {
 
 function _转小数(a) {
     a = 拆小数(a);
-    if (typeof a === "number") return 标记小数(a);
+    if (typeof a === "bigint" || typeof a === "number") return 标记小数(Number(a));
     if (typeof a === "string") {
         const n = Number(a.trim());
         if (!Number.isNaN(n)) return 标记小数(n);
@@ -777,10 +875,15 @@ function _转小数(a) {
 
 
 function _范围(...参数) {
-    const 们 = 参数.map(x => Math.trunc(拆小数(x)));
+    const 们 = 参数.map(x => {
+        const v = 拆小数(x);
+        if (typeof v === "bigint") return v;
+        if (typeof v === "number" && Number.isFinite(v)) return BigInt(Math.trunc(v));
+        throw new CNplus错误("CN0303", "范围的参数必须是数字", 0, 0);
+    });
     if (们.length === 1) {
         const 出 = [];
-        for (let i = 0; i < 们[0]; i++) 出.push(i);
+        for (let i = 0n; i < 们[0]; i++) 出.push(i);
         return 出;
     }
     if (们.length === 2) {
@@ -789,7 +892,14 @@ function _范围(...参数) {
         return 出;
     }
     const 出 = [];
-    for (let i = 们[0]; i < 们[1]; i += 们[2]) 出.push(i);
+    if (们[2] === 0n) {
+        throw new CNplus错误("CN0303", "范围的步长不能是零", 0, 0);
+    }
+    if (们[2] > 0n) {
+        for (let i = 们[0]; i < 们[1]; i += 们[2]) 出.push(i);
+    } else {
+        for (let i = 们[0]; i > 们[1]; i += 们[2]) 出.push(i);
+    }
     return 出;
 }
 
@@ -797,7 +907,7 @@ function _范围(...参数) {
 function _求和(序列) {
     if (!序列.every(x => 是数(x)))
         throw new CNplus错误("CN0303", "求和只能用于全是数字的列表", 0, 0);
-    return 序列.reduce((a, b) => a + b, 0);
+    return 序列.reduce((a, b) => 加(a, b, 0, 0), 0n);
 }
 
 
@@ -843,10 +953,68 @@ function _询问数值(提示) {
         const 试 = 行.trim();
         const n = Number(试);
         if (!Number.isNaN(n) && 试 !== "") {
-            return 试.includes(".") ? 标记小数(n) : 校验整数(n, 0, 0);
+            if (/[.eE]/.test(试)) return 标记小数(n);
+            if (/^[+-]?\d+$/.test(试)) return BigInt(试);
         }
         console.log(`「${试}」不是数字，请重新输入。`);
     }
+}
+
+
+function _位置数(v) {
+    const 位置 = Math.trunc(_到Number(v));
+    if (!Number.isSafeInteger(位置)) {
+        throw new CNplus错误("CN0303", "列表位置超出了能处理的范围", 0, 0);
+    }
+    return 位置;
+}
+
+
+function _绝对值(v) {
+    if (!是数(v)) throw new CNplus错误("CN0303", "绝对值只能用于数字", 0, 0);
+    if (v instanceof 小数值 || typeof v === "number") {
+        return 标记小数(Math.abs(_到Number(v)));
+    }
+    return v < 0n ? -v : v;
+}
+
+
+function _极值(取最大, ...参数) {
+    const 值们 = 参数.length === 1 && Array.isArray(参数[0]) ? 参数[0] : 参数;
+    if (值们.length === 0) throw new CNplus错误("CN0303", "至少要给一个值", 0, 0);
+    return 值们.reduce((当前, 值) =>
+        (取最大 ? 大于(值, 当前, 0, 0) : 小于(值, 当前, 0, 0)) ? 值 : 当前);
+}
+
+
+function _随机BigInt下于(上限) {
+    if (上限 === 1n) return 0n;
+    const 位数 = (上限 - 1n).toString(2).length;
+    while (true) {
+        let 值 = 0n;
+        let 剩余 = 位数;
+        while (剩余 > 0) {
+            const 本次 = Math.min(32, 剩余);
+            const 块 = BigInt(Math.floor(Math.random() * 2 ** 本次));
+            值 = (值 << BigInt(本次)) | 块;
+            剩余 -= 本次;
+        }
+        if (值 < 上限) return 值;
+    }
+}
+
+
+function _随机端点(v) {
+    const 值 = 拆小数(v);
+    if (typeof 值 === "number" && Number.isFinite(值)) return BigInt(Math.trunc(值));
+    return _转整数(值);
+}
+
+
+function _随机整数(a, b) {
+    const 起 = _随机端点(a); const 止 = _随机端点(b);
+    if (起 > 止) throw new CNplus错误("CN0303", "随机数的起点不能大于终点", 0, 0);
+    return 起 + _随机BigInt下于(止 - 起 + 1n);
 }
 
 
@@ -858,39 +1026,37 @@ const 内置们 = {
     "文本": 显示,
     "整数": _转整数,
     "小数": _转小数,
-    "长度": (x) => x instanceof Map ? x.size :
-        typeof x === "string" ? [...x].length : x.length,
+    "长度": (x) => BigInt(x instanceof Map ? x.size :
+        typeof x === "string" ? [...x].length : x.length),
     "范围": _范围,
-    "随机数": (a, b) => 校验整数(Math.floor(
-        Math.random() * (Math.trunc(拆小数(b)) - Math.trunc(拆小数(a)) + 1))
-        + Math.trunc(拆小数(a)), 0, 0),
-    "绝对值": (a) => Math.abs(拆小数(a)),
-    "最大": (...a) => a.length === 1 ? Math.max(...a[0]) : Math.max(...a),
-    "最小": (...a) => a.length === 1 ? Math.min(...a[0]) : Math.min(...a),
+    "随机数": _随机整数,
+    "绝对值": _绝对值,
+    "最大": (...a) => _极值(true, ...a),
+    "最小": (...a) => _极值(false, ...a),
     "求和": _求和,
-    "四舍五入": (a) => Math.round(拆小数(a)),
-    "平方根": (a) => 标记小数(Math.sqrt(拆小数(a))),
+    "四舍五入": (a) => typeof a === "bigint" ? a : BigInt(Math.round(_到Number(a))),
+    "平方根": (a) => 标记小数(Math.sqrt(_到Number(a))),
     "追加": (表, 项) => { 表.push(项); },
-    "插入": (表, 位, 项) => 表.splice(Math.trunc(拆小数(位)), 0, 项),
+    "插入": (表, 位, 项) => 表.splice(_位置数(位), 0, 项),
     "移除": (表, 项) => {
         const i = 表.indexOf(项);
         if (i === -1) throw new CNplus错误("CN0303",
             `列表里没有 ${显示(项)}`, 0, 0, "检查要移除的东西在不在列表里");
         表.splice(i, 1);
     },
-    "弹出": (表, ...a) => a.length ? 表.splice(Math.trunc(拆小数(a[0])), 1)[0] : 表.pop(),
+    "弹出": (表, ...a) => a.length ? 表.splice(_位置数(a[0]), 1)[0] : 表.pop(),
     "排序": (表) => [...表].sort((a, b) => _排序比较(a, b)),
     "倒序": (表) => [...表].reverse(),
-    "包含": (容器, 项) => 容器 instanceof Map ? [...容器.keys()].includes(项) : 容器.includes(项),
+    "包含": (容器, 项) => 容器 instanceof Map ? 容器.has(_字典标签(项)) : 容器.includes(项),
     "连接": (表, 隔) => 表.map(x => 显示(x)).join(隔),
     "所有标签": (字) => [...字.keys()],
     "所有值": (字) => [...字.values()],
-    "有标签": (字, 标签) => 字.has(标签),
-    "删标签": (字, 标签) => 字.delete(标签),
+    "有标签": (字, 标签) => 字.has(_字典标签(标签)),
+    "删标签": (字, 标签) => 字.delete(_字典标签(标签)),
     "分割": (文, 分隔符) => 分隔符 !== undefined && 分隔符 !== null
         ? 文.split(分隔符) : 文.trim().split(/\s+/),
     "替换": (文, 旧, 新) => 文.split(旧).join(新),
-    "查找": (文, 子) => 文.indexOf(子),
+    "查找": (文, 子) => BigInt(文.indexOf(子)),
     "去空白": (文) => 文.trim(),
     "大写": (文) => 文.toUpperCase(),
     "小写": (文) => 文.toLowerCase(),
@@ -901,7 +1067,7 @@ const 内置们 = {
 
 function _排序比较(a, b) {
     a = 拆小数(a); b = 拆小数(b);
-    if (typeof a === "number" && typeof b === "number") return a - b;
+    if (是数(a) && 是数(b)) return a < b ? -1 : a > b ? 1 : 0;
     return String(a) < String(b) ? -1 : String(a) > String(b) ? 1 : 0;
 }
 
