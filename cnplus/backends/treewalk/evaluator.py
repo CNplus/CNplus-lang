@@ -133,9 +133,8 @@ class 树遍历后端(后端):
             环.声明(s.名, self._求值(s.值, 环))
             return
         if isinstance(s, 赋值语句):
-            值 = self._求值(s.值, 环)
             if s.复合 is not None:
-                # x += y：取旧值，用复合运算符算出新值
+                # x += y：先取目标旧值，再求值右侧（严格从左到右）。
                 有, 旧 = 环.取(s.名)
                 if not 有:
                     raise 运行时错误(CN0302_未声明变量,
@@ -144,7 +143,10 @@ class 树遍历后端(后端):
                                   提示=(f"两种可能：一是想把「{s.名}」当一段文字，给它加上双引号 "
                               f"（例如 设 名字 = \"{s.名}\"）；二是想用变量，但还没建立它 "
                               f"（先写 设 {s.名} = …）"))
+                值 = self._求值(s.值, 环)
                 值 = self._算二元(s.复合, 旧, 值, s.跨)
+            else:
+                值 = self._求值(s.值, 环)
             if not 环.赋值(s.名, 值):
                 raise 运行时错误(CN0302_未声明变量,
                               f"变量 {s.名} 还没有声明过", s.跨,
@@ -197,7 +199,12 @@ class 树遍历后端(后端):
         if isinstance(s, 索引赋值语句):
             对象 = self._求值(s.对象, 环)
             下标 = self._求值(s.下标, 环)
-            值 = self._求值(s.值, 环)
+            if s.复合 is not None:
+                旧 = self._取索引值(对象, 下标, s.跨)
+                右 = self._求值(s.值, 环)
+                值 = self._算二元(s.复合, 旧, 右, s.跨)
+            else:
+                值 = self._求值(s.值, 环)
             try:
                 if isinstance(对象, dict):
                     下标 = 规范字典标签(下标)
@@ -225,7 +232,12 @@ class 树遍历后端(后端):
             return
         if isinstance(s, 成员赋值语句):
             对象 = self._求值(s.对象, 环)
-            值 = self._求值(s.值, 环)
+            if s.复合 is not None:
+                旧 = self._取成员值(对象, s.属性, s.跨)
+                右 = self._求值(s.值, 环)
+                值 = self._算二元(s.复合, 旧, 右, s.跨)
+            else:
+                值 = self._求值(s.值, 环)
             if isinstance(对象, 实例值):
                 对象.字段[s.属性] = 值
                 return
@@ -438,50 +450,56 @@ class 树遍历后端(后端):
     def _取索引(self, e: 索引访问, 环: 环境) -> object:
         对象 = self._求值(e.对象, 环)
         下标 = self._求值(e.下标, 环)
+        return self._取索引值(对象, 下标, e.跨)
+
+    def _取索引值(self, 对象: object, 下标: object, 跨) -> object:
         try:
             if isinstance(对象, dict):
                 下标 = 规范字典标签(下标)
             return 对象[下标]
         except TypeError:
             raise 运行时错误(CN0303_类型不匹配,
-                          f"{类型名(对象)}不能用下标取值", e.跨,
+                          f"{类型名(对象)}不能用下标取值", 跨,
                           解释="只有列表、字典和文字能用 […] 取里面的东西",
                           提示="检查这个东西的类型") from None
         except IndexError:
             长 = len(cast(Sized, 对象)) if hasattr(对象, "__len__") else "?"
             raise 运行时错误(CN0308_下标越界,
-                          f"下标 {显示(下标)} 超出范围（一共 {长} 个）", e.跨,
+                          f"下标 {显示(下标)} 超出范围（一共 {长} 个）", 跨,
                           解释="列表下标从 0 开始，最大是「长度 - 1」",
                           提示=f"用「长度(…)」看有多少个") from None
         except KeyError:
             raise 运行时错误(CN0308_下标越界,
-                          f"字典里没有标签 {显示(下标)}", e.跨,
+                          f"字典里没有标签 {显示(下标)}", 跨,
                           解释="这个标签不在字典里",
                           提示="检查标签是不是写错了") from None
 
     def _取成员(self, e: 成员访问, 环: 环境) -> object:
         对象 = self._求值(e.对象, 环)
+        return self._取成员值(对象, e.属性, e.跨)
+
+    def _取成员值(self, 对象: object, 属性: str, 跨) -> object:
         # 类实例：先查字段，再查方法（取出即绑定）
         if isinstance(对象, 实例值):
-            if e.属性 in 对象.字段:
-                return 对象.字段[e.属性]
-            方法 = 对象.类.方法表.get(e.属性)
+            if 属性 in 对象.字段:
+                return 对象.字段[属性]
+            方法 = 对象.类.方法表.get(属性)
             if 方法 is not None:
                 return 绑定方法(函=方法, 实例=对象)
             raise 运行时错误(CN0302_未声明变量,
-                          f"{对象.类.名} 里没有「{e.属性}」这个字段或方法", e.跨,
+                          f"{对象.类.名} 里没有「{属性}」这个字段或方法", 跨,
                           解释=f"{对象.类.名} 的字段和方法里都找不到这个名字",
                           提示="检查名字是不是写错了，或去类定义里看看")
         try:
-            return 从宿主值(getattr(对象, e.属性))
+            return 从宿主值(getattr(对象, 属性))
         except 宿主边界错误 as ex:
-            raise 运行时错误(CN0303_类型不匹配, str(ex), e.跨,
+            raise 运行时错误(CN0303_类型不匹配, str(ex), 跨,
                           解释="Python 库里的这个值不能无损转换成 CNplus 值",
                           提示="先让库函数把它转换成只含文字、整数、布尔或空标签的字典") from None
         except AttributeError:
             raise 运行时错误(CN0302_未声明变量,
-                          f"{e.属性} 在 {类型名(对象)} 里不存在", e.跨,
-                          解释=f"这个东西没有叫「{e.属性}」的成员",
+                          f"{属性} 在 {类型名(对象)} 里不存在", 跨,
+                          解释=f"这个东西没有叫「{属性}」的成员",
                           提示=f"检查成员名是不是写错了") from None
 
     def _一元(self, e: 一元表达式, 环: 环境) -> object:
@@ -719,8 +737,9 @@ class 树遍历后端(后端):
                     except Exception as ex:
                         raise 运行时错误(CN0303_类型不匹配,
                                       f"调用 {方法名} 出错：{ex}", e.跨) from None
-
-        被调 = self._求值(e.被调, 环)
+            被调 = self._取成员值(对象值, 方法名, e.被调.跨)
+        else:
+            被调 = self._求值(e.被调, 环)
         实参 = [self._求值(a, 环) for a in e.实参]
         关键字 = {名: self._求值(值, 环) for 名, 值 in e.关键字参数}
 

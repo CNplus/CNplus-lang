@@ -284,6 +284,7 @@ class 索引赋值语句(语句):
     下标: 表达式
     值: 表达式
     跨: 跨度
+    复合: 二元运算 | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -293,6 +294,7 @@ class 成员赋值语句(语句):
     属性: str
     值: 表达式
     跨: 跨度
+    复合: 二元运算 | None = None
 
 
 @dataclass(frozen=True, slots=True)
