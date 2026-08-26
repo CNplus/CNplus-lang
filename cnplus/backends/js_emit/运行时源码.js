@@ -92,6 +92,7 @@ function 类型名(值) {
     if (值 instanceof 类值) return "类";
     if (值 instanceof 实例值) return 值.类.名;
     if (值 instanceof 绑定方法) return "函数";
+    if (typeof 值 === "function") return "函数";
     return typeof 值;
 }
 
@@ -376,23 +377,24 @@ function _可比较(左, 右) {
     if (typeof 左 === "string" && typeof 右 === "string") return true;
     if (Array.isArray(左) && Array.isArray(右)) return true;
     if (左 instanceof Map && 右 instanceof Map) return true;
+    if (左 instanceof 实例值 && 右 instanceof 实例值) return true;
     return false;
 }
 
 
 function 等于(左, 右, 行, 列) {
-    左 = 拆小数(左); 右 = 拆小数(右);
+    return _值相等(左, 右, 行, 列);
+}
+
+
+function _值相等(左, 右, 行, 列, 已见 = new WeakMap()) {
     if (!_可比较(左, 右)) {
         throw new CNplus错误("CN0303",
             `不能比较${类型名(左)}和${类型名(右)}`, 行, 列,
             `${类型名(左)}和${类型名(右)}是两类不同的东西，比它们相不相等没有意义`,
             "先用「文本(…)」或「整数(…)」把它们转成同一类再比");
     }
-    return _值相等(左, 右);
-}
-
-
-function _值相等(左, 右) {
+    if (左 === null || 右 === null) return 左 === 右;
     if (是数(左) && 是数(右)) {
         左 = 拆小数(左); 右 = 拆小数(右);
         if (typeof 左 === "bigint" && typeof 右 === "number") {
@@ -404,16 +406,40 @@ function _值相等(左, 右) {
         return 左 === 右;
     }
     if (Array.isArray(左) && Array.isArray(右)) {
-        if (左.length !== 右.length) return false;
-        return 左.every((v, i) => _值相等(v, 右[i]));
+        if (左 === 右) return true;
+        let 右们 = 已见.get(左);
+        if (右们?.has(右)) return true;
+        if (右们 === undefined) {
+            右们 = new WeakSet();
+            已见.set(左, 右们);
+        }
+        右们.add(右);
+        let 相等 = 左.length === 右.length;
+        for (let i = 0; i < Math.min(左.length, 右.length); i++) {
+            if (!_值相等(左[i], 右[i], 行, 列, 已见)) 相等 = false;
+        }
+        return 相等;
     }
     if (左 instanceof Map && 右 instanceof Map) {
-        if (左.size !== 右.size) return false;
-        for (const [k, v] of 左) {
-            if (!右.has(k) || !_值相等(v, 右.get(k))) return false;
+        if (左 === 右) return true;
+        let 右们 = 已见.get(左);
+        if (右们?.has(右)) return true;
+        if (右们 === undefined) {
+            右们 = new WeakSet();
+            已见.set(左, 右们);
         }
-        return true;
+        右们.add(右);
+        let 相等 = 左.size === 右.size;
+        for (const [k, v] of 左) {
+            if (!右.has(k)) {
+                相等 = false;
+            } else if (!_值相等(v, 右.get(k), 行, 列, 已见)) {
+                相等 = false;
+            }
+        }
+        return 相等;
     }
+    if (左 instanceof 实例值) return 左 === 右;
     return 左 === 右;
 }
 
@@ -575,10 +601,15 @@ function 遍历项(可迭代, 行, 列) {
 
 // ==================== 集合：索引 / 切片 / 字典 ====================
 
-function _字典标签(标签) {
+function _字典标签(标签, 行 = 0, 列 = 0) {
     const 值 = 拆小数(标签);
     if (typeof 值 === "number" && Number.isInteger(值)) return BigInt(值);
-    return 值;
+    if (typeof 值 === "string" || typeof 值 === "bigint"
+        || typeof 值 === "boolean" || 值 === null) return 值;
+    throw new CNplus错误("CN0303",
+        `${类型名(标签)}不能作字典的标签`, 行, 列,
+        "字典的标签得是文字、整数、布尔或空这类固定不变的东西",
+        '例如 {"名字": "小明"}');
 }
 
 
@@ -620,7 +651,7 @@ function 取索引(对象, 下标, 行, 列) {
         return 项们[i];
     }
     if (对象 instanceof Map) {
-        const 标签 = _字典标签(下标);
+        const 标签 = _字典标签(下标, 行, 列);
         if (!对象.has(标签)) {
             throw new CNplus错误("CN0308", `字典里没有标签 ${显示(下标)}`, 行, 列,
                 "这个标签不在字典里", "检查标签是不是写错了");
@@ -640,7 +671,7 @@ function 设索引(对象, 下标, 值, 行, 列) {
         return;
     }
     if (对象 instanceof Map) {
-        对象.set(_字典标签(下标), 值);
+        对象.set(_字典标签(下标, 行, 列), 值);
         return;
     }
     throw new CNplus错误("CN0303", `${类型名(对象)}不能用下标赋值`, 行, 列,
@@ -652,14 +683,7 @@ function 设索引(对象, 下标, 值, 行, 列) {
 function 造字典(键值对, 行, 列) {
     const 出 = new Map();
     for (const [键, 值] of 键值对) {
-        const k = _字典标签(键);
-        if (!(typeof k === "string" || typeof k === "bigint" || Number.isInteger(k)
-              || typeof k === "boolean" || k === null)) {
-            throw new CNplus错误("CN0303",
-                `${类型名(键)}不能作字典的标签`, 行, 列,
-                "字典的标签得是文字或数字这类固定不变的东西",
-                '例如 {"名字": "小明"}');
-        }
+        const k = _字典标签(键, 行, 列);
         出.set(k, 值);
     }
     return 出;
@@ -771,6 +795,9 @@ function 点调用(全局, 对象, 方法名, 实参们, 关键字们, 行, 列)
         && _可点方法.has(方法名)) {
         const 函数 = 内置们[方法名];
         if (函数 !== undefined) {
+            if (typeof 函数._按位置调用 === "function") {
+                return 函数._按位置调用([对象, ...实参们], 行, 列);
+            }
             return 函数(对象, ...实参们);
         }
     }
@@ -795,6 +822,9 @@ function 调用(被调, 实参们, 关键字们, 行, 列) {
         return 被调.实现(局部);
     }
     if (typeof 被调 === "function") {
+        if (typeof 被调._按位置调用 === "function") {
+            return 被调._按位置调用(实参们, 行, 列);
+        }
         return 被调(...实参们);
     }
     throw new CNplus错误("CN0305", `${类型名(被调)}不能被调用`, 行, 列,
@@ -1018,6 +1048,13 @@ function _随机整数(a, b) {
 }
 
 
+function _带位置内置(实现) {
+    const 包装 = (...实参们) => 实现(...实参们, 0, 0);
+    包装._按位置调用 = (实参们, 行, 列) => 实现(...实参们, 行, 列);
+    return 包装;
+}
+
+
 const 内置们 = {
     "打印": _内置_打印,
     "询问": _询问,
@@ -1047,12 +1084,15 @@ const 内置们 = {
     "弹出": (表, ...a) => a.length ? 表.splice(_位置数(a[0]), 1)[0] : 表.pop(),
     "排序": (表) => [...表].sort((a, b) => _排序比较(a, b)),
     "倒序": (表) => [...表].reverse(),
-    "包含": (容器, 项) => 容器 instanceof Map ? 容器.has(_字典标签(项)) : 容器.includes(项),
+    "包含": _带位置内置((容器, 项, 行, 列) =>
+        容器 instanceof Map ? 容器.has(_字典标签(项, 行, 列)) : 容器.includes(项)),
     "连接": (表, 隔) => 表.map(x => 显示(x)).join(隔),
     "所有标签": (字) => [...字.keys()],
     "所有值": (字) => [...字.values()],
-    "有标签": (字, 标签) => 字.has(_字典标签(标签)),
-    "删标签": (字, 标签) => 字.delete(_字典标签(标签)),
+    "有标签": _带位置内置((字, 标签, 行, 列) =>
+        字.has(_字典标签(标签, 行, 列))),
+    "删标签": _带位置内置((字, 标签, 行, 列) =>
+        字.delete(_字典标签(标签, 行, 列))),
     "分割": (文, 分隔符) => 分隔符 !== undefined && 分隔符 !== null
         ? 文.split(分隔符) : 文.trim().split(/\s+/),
     "替换": (文, 旧, 新) => 文.split(旧).join(新),

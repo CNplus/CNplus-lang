@@ -8,6 +8,9 @@
 """
 from __future__ import annotations
 
+from collections.abc import Iterable, Sized
+from typing import cast
+
 from cnplus.backends.base import 后端, 运行时错误
 from cnplus.diagnostics import (CN0301_条件必须是布尔, CN0302_未声明变量,
                                 CN0303_类型不匹配, CN0304_除以零, CN0305_不可调用,
@@ -24,7 +27,9 @@ from cnplus.parser.ast import (一元运算, 一元表达式, 二元运算, 二�
                                格式串, 多重声明语句, 尝试语句, 抛出语句,
                                错误表达式, 错误语句, 类声明, 成员赋值语句,
                                切片访问)
-from cnplus.runtime.values import 函数值, 类型名, 显示, 类值, 实例值, 绑定方法
+from cnplus.runtime.values import (函数值, 类型名, 显示, 类值, 实例值, 绑定方法,
+                                   规范字典标签, 还原字典标签, 到宿主值, 从宿主值,
+                                   宿主边界错误)
 from cnplus.source import 源文件
 
 
@@ -194,6 +199,8 @@ class 树遍历后端(后端):
             下标 = self._求值(s.下标, 环)
             值 = self._求值(s.值, 环)
             try:
+                if isinstance(对象, dict):
+                    下标 = 规范字典标签(下标)
                 对象[下标] = 值
             except TypeError:
                 raise 运行时错误(CN0303_类型不匹配,
@@ -302,7 +309,8 @@ class 树遍历后端(后端):
     def _遍历(self, s: 遍历语句, 环: 环境) -> None:
         目标 = self._求值(s.可迭代, 环)
         try:
-            序列 = list(目标)
+            序列 = ([还原字典标签(k) for k in 目标]
+                  if isinstance(目标, dict) else list(cast(Iterable[object], 目标)))
         except TypeError:
             raise 运行时错误(CN0309_不可遍历,
                           f"{类型名(目标)}不能遍历", s.可迭代.跨,
@@ -371,7 +379,7 @@ class 树遍历后端(后端):
             for 键节点, 值节点 in e.键值对:
                 键 = self._求值(键节点, 环)
                 try:
-                    出[键] = self._求值(值节点, 环)
+                    出[规范字典标签(键)] = self._求值(值节点, 环)
                 except TypeError:
                     raise 运行时错误(CN0303_类型不匹配,
                                   f"{类型名(键)}不能作字典的标签", 键节点.跨,
@@ -431,6 +439,8 @@ class 树遍历后端(后端):
         对象 = self._求值(e.对象, 环)
         下标 = self._求值(e.下标, 环)
         try:
+            if isinstance(对象, dict):
+                下标 = 规范字典标签(下标)
             return 对象[下标]
         except TypeError:
             raise 运行时错误(CN0303_类型不匹配,
@@ -438,7 +448,7 @@ class 树遍历后端(后端):
                           解释="只有列表、字典和文字能用 […] 取里面的东西",
                           提示="检查这个东西的类型") from None
         except IndexError:
-            长 = len(对象) if hasattr(对象, "__len__") else "?"
+            长 = len(cast(Sized, 对象)) if hasattr(对象, "__len__") else "?"
             raise 运行时错误(CN0308_下标越界,
                           f"下标 {显示(下标)} 超出范围（一共 {长} 个）", e.跨,
                           解释="列表下标从 0 开始，最大是「长度 - 1」",
@@ -463,7 +473,11 @@ class 树遍历后端(后端):
                           解释=f"{对象.类.名} 的字段和方法里都找不到这个名字",
                           提示="检查名字是不是写错了，或去类定义里看看")
         try:
-            return getattr(对象, e.属性)
+            return 从宿主值(getattr(对象, e.属性))
+        except 宿主边界错误 as ex:
+            raise 运行时错误(CN0303_类型不匹配, str(ex), e.跨,
+                          解释="Python 库里的这个值不能无损转换成 CNplus 值",
+                          提示="先让库函数把它转换成只含文字、整数、布尔或空标签的字典") from None
         except AttributeError:
             raise 运行时错误(CN0302_未声明变量,
                           f"{e.属性} 在 {类型名(对象)} 里不存在", e.跨,
@@ -515,13 +529,7 @@ class 树遍历后端(后端):
         """
         # 相等：跨类型报错，不返回假（语义约定，故意与 Python 不同）
         if 运 in (二元运算.等于, 二元运算.不等于):
-            if not self._可比较(左, 右):
-                raise 运行时错误(CN0303_类型不匹配,
-                              f"不能比较{类型名(左)}和{类型名(右)}", 跨,
-                              解释=f"{类型名(左)}和{类型名(右)}是两类不同的东西，"
-                                 "比它们相不相等没有意义（CNplus 宁可报错，也不悄悄给你一个「不相等」）",
-                              提示="先用「文本(…)」或「整数(…)」把它们转成同一类再比")
-            结果 = 左 == 右
+            结果 = self._值相等(左, 右, 跨)
             return 结果 if 运 is 二元运算.等于 else not 结果
 
         # 字符串拼接与重复
@@ -606,6 +614,53 @@ class 树遍历后端(后端):
         if self._是数(左) and self._是数(右):
             return True   # 1 == 1.0 为真（语义约定）
         return type(左) is type(右)
+
+    def _值相等(self, 左: object, 右: object, 跨,
+              已见: set[tuple[int, int]] | None = None) -> bool:
+        """递归执行 CNplus 相等合同，不让宿主容器绕过类型检查。"""
+        if not self._可比较(左, 右):
+            raise 运行时错误(CN0303_类型不匹配,
+                          f"不能比较{类型名(左)}和{类型名(右)}", 跨,
+                          解释=f"{类型名(左)}和{类型名(右)}是两类不同的东西，"
+                             "比它们相不相等没有意义（CNplus 宁可报错，也不悄悄给你一个「不相等」）",
+                          提示="先用「文本(…)」或「整数(…)」把它们转成同一类再比")
+        if 左 is None or 右 is None:
+            return 左 is 右
+        if isinstance(左, list):
+            assert isinstance(右, list)
+            if 左 is 右:
+                return True
+            if 已见 is None:
+                已见 = set()
+            对 = (id(左), id(右))
+            if 对 in 已见:
+                return True
+            已见.add(对)
+            相等 = len(左) == len(右)
+            for a, b in zip(左, 右):
+                if not self._值相等(a, b, 跨, 已见):
+                    相等 = False
+            return 相等
+        if isinstance(左, dict):
+            assert isinstance(右, dict)
+            if 左 is 右:
+                return True
+            if 已见 is None:
+                已见 = set()
+            对 = (id(左), id(右))
+            if 对 in 已见:
+                return True
+            已见.add(对)
+            相等 = len(左) == len(右)
+            for k, v in 左.items():
+                if k not in 右:
+                    相等 = False
+                elif not self._值相等(v, 右[k], 跨, 已见):
+                    相等 = False
+            return 相等
+        if isinstance(左, 实例值):
+            return 左 is 右
+        return 左 == 右
 
     def _要布尔(self, 值: object, 节, 运) -> None:
         if not isinstance(值, bool):
@@ -738,7 +793,9 @@ class 树遍历后端(后端):
         # 导入的 Python 库里的函数 / 类 / 任何可调用对象
         if callable(被调):
             try:
-                return 被调(*实参, **关键字)
+                宿主实参 = [到宿主值(v) for v in 实参]
+                宿主关键字 = {名: 到宿主值(v) for 名, v in 关键字.items()}
+                return 从宿主值(被调(*宿主实参, **宿主关键字))
             except 运行时错误:
                 raise
             except Exception as ex:
@@ -799,6 +856,9 @@ class _内置:
         self.元数 = 元数
         self.实现 = 实现
 
+    def __call__(self, *实参):
+        return self.实现(*实参)
+
     def __repr__(self) -> str:
         return f"<内置函数 {self.名}>"
 
@@ -830,6 +890,22 @@ def _求和(序列):
 
 def _分割(文字, 分隔符=None):
     return 文字.split(分隔符) if 分隔符 is not None else 文字.split()
+
+
+def _包含(容器, 项):
+    return 规范字典标签(项) in 容器 if isinstance(容器, dict) else 项 in 容器
+
+
+def _所有标签(字):
+    return [还原字典标签(k) for k in 字.keys()]
+
+
+def _有标签(字, 标签):
+    return 规范字典标签(标签) in 字
+
+
+def _删标签(字, 标签):
+    return 字.pop(规范字典标签(标签), None)
 
 
 def _询问(提示, 读一行):
@@ -905,13 +981,13 @@ def 内置表(打印实现, 读一行=None):
         ("弹出", -2, lambda *a: a[0].pop(int(a[1])) if len(a) > 1 else a[0].pop()),
         ("排序", 1, lambda 表: sorted(表)),
         ("倒序", 1, lambda 表: list(reversed(表))),
-        ("包含", 2, lambda 容器, 项: 项 in 容器),
+        ("包含", 2, _包含),
         ("连接", 2, lambda 表, 隔: 隔.join(显示(x) for x in 表)),
         # ---- 字典 ----
-        ("所有标签", 1, lambda 字: list(字.keys())),
+        ("所有标签", 1, _所有标签),
         ("所有值", 1, lambda 字: list(字.values())),
-        ("有标签", 2, lambda 字, 标签: 标签 in 字),
-        ("删标签", 2, lambda 字, 标签: 字.pop(标签, None)),
+        ("有标签", 2, _有标签),
+        ("删标签", 2, _删标签),
         # ---- 字符串 ----
         ("分割", -2, _分割),
         ("替换", 3, lambda 文, 旧, 新: 文.replace(旧, 新)),

@@ -53,14 +53,31 @@ class JS转译后端(后端):
 
     def _处理异常(self, stderr: str, 源: 源文件, 袋: 诊断袋) -> None:
         """node 的 stderr 里找 CNplus错误（JSON 行），映射回 .cnp 位置。"""
-        import re
-        # 运行时最后抛错前会 console.error 一行 JSON：{"码":..., "行":..., "列":...}
-        m = re.search(r"__CNPLUS__(\{.*?\})", stderr, re.S)
-        if m:
-            信息 = json.loads(m.group(1))
-            跨 = 源.跨度于行列(信息.get("行", 1), 信息.get("列", 1))
-            袋.报告(信息.get("码", "CN9001"), 信息.get("消息", "未知错误"), 跨,
-                  提示=信息.get("提示"), 解释=信息.get("解释"))
+        # 运行时最后抛错前会 console.error 一整行 JSON。不能用「遇到第一个 }」
+        # 的正则截取：错误解释本身可以合法包含字典示例或其他花括号。
+        for 行 in stderr.splitlines():
+            _前, 标记, 负载 = 行.partition("__CNPLUS__")
+            if not 标记:
+                continue
+            try:
+                信息 = json.loads(负载)
+            except json.JSONDecodeError:
+                continue
+            if not isinstance(信息, dict):
+                continue
+            码, 消息 = 信息.get("码"), 信息.get("消息")
+            行号, 列号 = 信息.get("行"), 信息.get("列")
+            提示, 解释 = 信息.get("提示"), 信息.get("解释")
+            if not (isinstance(码, str) and len(码) == 6
+                    and 码.startswith("CN") and 码[2:].isdigit()
+                    and isinstance(消息, str)
+                    and isinstance(行号, int) and not isinstance(行号, bool)
+                    and isinstance(列号, int) and not isinstance(列号, bool)
+                    and (提示 is None or isinstance(提示, str))
+                    and (解释 is None or isinstance(解释, str))):
+                continue
+            跨 = 源.跨度于行列(行号, 列号)
+            袋.报告(码, 消息, 跨, 提示=提示, 解释=解释)
             return
         袋.报告("CN9001", f"JS 运行时错误：{stderr.strip()[:200]}", 源.跨度于(0, 1),
               解释="这个错误来自 JS 运行环境，不是 CNplus 本身",

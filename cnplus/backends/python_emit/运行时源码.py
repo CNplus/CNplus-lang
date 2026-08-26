@@ -32,6 +32,121 @@ class _缺省类:
 缺省 = _缺省类()
 
 
+class _字典标签:
+    """宿主字典内部标签；类别参与相等，避免 Python 把 真 与 1 合并。"""
+    __slots__ = ("类别", "值")
+
+    def __init__(self, 类别, 值):
+        self.类别 = 类别
+        self.值 = 值
+
+    def __hash__(self):
+        return hash((self.类别, self.值))
+
+    def __eq__(self, 其他):
+        return (isinstance(其他, _字典标签) and self.类别 == 其他.类别
+                and self.值 == 其他.值)
+
+
+def _规范字典标签(值):
+    if 值 is None:
+        return _字典标签("空", None)
+    if isinstance(值, bool):
+        return _字典标签("布尔", 值)
+    if isinstance(值, int):
+        return _字典标签("整数", 值)
+    if isinstance(值, float) and 值.is_integer():
+        return _字典标签("整数", int(值))
+    if isinstance(值, str):
+        return _字典标签("字符串", 值)
+    raise TypeError
+
+
+def _还原字典标签(标签):
+    return 标签.值
+
+
+class _宿主边界错误(TypeError):
+    pass
+
+
+def _含语言字典(值, 已见):
+    if isinstance(值, dict):
+        return True
+    if not isinstance(值, list) or id(值) in 已见:
+        return False
+    已见.add(id(值))
+    return any(_含语言字典(x, 已见) for x in 值)
+
+
+def _转换到宿主(值, 已转):
+    if not isinstance(值, (list, dict)):
+        return 值
+    if id(值) in 已转:
+        return 已转[id(值)]
+    if isinstance(值, list):
+        出 = []
+        已转[id(值)] = 出
+        出.extend(_转换到宿主(x, 已转) for x in 值)
+        return 出
+    出 = {}
+    已转[id(值)] = 出
+    for 标签, 项 in 值.items():
+        if not isinstance(标签, _字典标签):
+            raise _宿主边界错误("语言字典含有损坏的内部标签")
+        宿主标签 = _还原字典标签(标签)
+        if 宿主标签 in 出:
+            raise _宿主边界错误(
+                "字典含有在 Python 中会合并的不同标签，不能无损传给宿主库")
+        出[宿主标签] = _转换到宿主(项, 已转)
+    return 出
+
+
+def _到宿主值(值):
+    if not _含语言字典(值, set()):
+        return 值
+    return _转换到宿主(值, {})
+
+
+def _含宿主字典(值, 已见):
+    if isinstance(值, dict):
+        return True
+    if isinstance(值, tuple):
+        return True
+    if not isinstance(值, list) or id(值) in 已见:
+        return False
+    已见.add(id(值))
+    return any(_含宿主字典(x, 已见) for x in 值)
+
+
+def _转换从宿主(值, 已转):
+    if not isinstance(值, (list, tuple, dict)):
+        return 值
+    if id(值) in 已转:
+        return 已转[id(值)]
+    if isinstance(值, (list, tuple)):
+        出 = []
+        已转[id(值)] = 出
+        出.extend(_转换从宿主(x, 已转) for x in 值)
+        return 出
+    出 = {}
+    已转[id(值)] = 出
+    for 标签, 项 in 值.items():
+        try:
+            语言标签 = _规范字典标签(标签)
+        except TypeError as ex:
+            raise _宿主边界错误(
+                f"Python 字典的 {type(标签).__name__} 标签不能转换成 CNplus 标签") from ex
+        出[语言标签] = _转换从宿主(项, 已转)
+    return 出
+
+
+def _从宿主值(值):
+    if not _含宿主字典(值, set()):
+        return 值
+    return _转换从宿主(值, {})
+
+
 class 函数值:
     __slots__ = ("实现", "闭包", "形参们", "名", "默认们")
 
@@ -80,6 +195,17 @@ class 绑定方法:
         return f"<方法 {self.函.名} of {self.实例.类.名}>"
 
 
+class _语言内置:
+    """显式标记 CNplus 内置，避免与导入的同一 Python 函数混淆。"""
+    __slots__ = ("实现",)
+
+    def __init__(self, 实现):
+        self.实现 = 实现
+
+    def __call__(self, *实参, **关键字):
+        return self.实现(*实参, **关键字)
+
+
 def 类型名(值):
     if 值 is None:
         return "空"
@@ -103,6 +229,8 @@ def 类型名(值):
         return 值.类.名
     if isinstance(值, 绑定方法):
         return "函数"
+    if callable(值):
+        return "函数"
     return type(值).__name__
 
 
@@ -118,7 +246,8 @@ def 显示(值):
     if isinstance(值, list):
         return "[" + ", ".join(显示(x) for x in 值) + "]"
     if isinstance(值, dict):
-        return "{" + ", ".join(f"{显示(k)}: {显示(v)}" for k, v in 值.items()) + "}"
+        return "{" + ", ".join(
+            f"{显示(_还原字典标签(k))}: {显示(v)}" for k, v in 值.items()) + "}"
     if isinstance(值, 函数值):
         return f"<函数 {值.名}>"
     if isinstance(值, 实例值):
@@ -277,10 +406,48 @@ def 取余(左, 右, 行, 列):
 
 
 def 等于(左, 右, 行, 列):
+    return _值相等(左, 右, 行, 列)
+
+
+def _值相等(左, 右, 行, 列, 已见=None):
     if not _可比较(左, 右):
         raise CNplus错误("CN0303", f"不能比较{类型名(左)}和{类型名(右)}", 行, 列,
                       解释=f"{类型名(左)}和{类型名(右)}是两类不同的东西，比它们相不相等没有意义",
                       提示="先用「文本(…)」或「整数(…)」把它们转成同一类再比")
+    if 左 is None or 右 is None:
+        return 左 is 右
+    if isinstance(左, list):
+        if 左 is 右:
+            return True
+        if 已见 is None:
+            已见 = set()
+        对 = (id(左), id(右))
+        if 对 in 已见:
+            return True
+        已见.add(对)
+        相等 = len(左) == len(右)
+        for a, b in zip(左, 右):
+            if not _值相等(a, b, 行, 列, 已见):
+                相等 = False
+        return 相等
+    if isinstance(左, dict):
+        if 左 is 右:
+            return True
+        if 已见 is None:
+            已见 = set()
+        对 = (id(左), id(右))
+        if 对 in 已见:
+            return True
+        已见.add(对)
+        相等 = len(左) == len(右)
+        for k, v in 左.items():
+            if k not in 右:
+                相等 = False
+            elif not _值相等(v, 右[k], 行, 列, 已见):
+                相等 = False
+        return 相等
+    if isinstance(左, 实例值):
+        return 左 is 右
     return 左 == 右
 
 
@@ -412,10 +579,22 @@ def 调用(被调, 实参们, 关键字们, 行, 列):
     if isinstance(被调, 函数值):
         局部 = _绑定(被调, 实参们, 关键字们, 行, 列)
         return 被调.实现(局部)
-    if callable(被调):
+    if isinstance(被调, _语言内置):
         kw = {名: 值 for 名, 值 in 关键字们}
         try:
             return 被调(*实参们, **kw)
+        except CNplus错误:
+            raise
+        except EOFError:
+            raise
+        except Exception as ex:
+            raise CNplus错误("CN0303", str(ex), 行, 列) from None
+    if callable(被调):
+        kw = {名: 值 for 名, 值 in 关键字们}
+        try:
+            宿主实参 = [_到宿主值(v) for v in 实参们]
+            宿主关键字 = {名: _到宿主值(v) for 名, v in kw.items()}
+            return _从宿主值(被调(*宿主实参, **宿主关键字))
         except CNplus错误:
             raise
         except EOFError:
@@ -471,7 +650,11 @@ def 取成员(对象, 属性, 行, 列):
                       解释=f"{对象.类.名} 的字段和方法里都找不到这个名字",
                       提示="检查名字是不是写错了，或去类定义里看看")
     try:
-        return getattr(对象, 属性)
+        return _从宿主值(getattr(对象, 属性))
+    except _宿主边界错误 as ex:
+        raise CNplus错误("CN0303", str(ex), 行, 列,
+                      解释="Python 库里的这个值不能无损转换成 CNplus 值",
+                      提示="先让库函数把它转换成只含文字、整数、布尔或空标签的字典") from None
     except AttributeError:
         raise CNplus错误("CN0302", f"{属性} 在 {类型名(对象)} 里不存在", 行, 列,
                       解释=f"这个东西没有叫「{属性}」的成员",
@@ -534,6 +717,8 @@ class 继续信号(Exception):
 
 def 取索引(对象, 下标, 行, 列):
     try:
+        if isinstance(对象, dict):
+            下标 = _规范字典标签(下标)
         return 对象[下标]
     except TypeError:
         raise CNplus错误("CN0303", f"{类型名(对象)}不能用下标取值", 行, 列,
@@ -588,6 +773,8 @@ def 取切片(对象, 起, 止, 行, 列):
 
 def 设索引(对象, 下标, 值, 行, 列):
     try:
+        if isinstance(对象, dict):
+            下标 = _规范字典标签(下标)
         对象[下标] = 值
     except TypeError:
         raise CNplus错误("CN0303", f"{类型名(对象)}不能用下标赋值", 行, 列,
@@ -603,7 +790,7 @@ def 造字典(键值对, 行, 列):
     出 = {}
     for 键, 值 in 键值对:
         try:
-            出[键] = 值
+            出[_规范字典标签(键)] = 值
         except TypeError:
             raise CNplus错误("CN0303", f"{类型名(键)}不能作字典的标签", 行, 列,
                           解释="字典的标签得是文字或数字这类固定不变的东西",
@@ -613,7 +800,8 @@ def 造字典(键值对, 行, 列):
 
 def 遍历项(可迭代, 行, 列):
     try:
-        return list(可迭代)
+        return ([_还原字典标签(k) for k in 可迭代]
+                if isinstance(可迭代, dict) else list(可迭代))
     except TypeError:
         raise CNplus错误("CN0309", f"{类型名(可迭代)}不能遍历", 行, 列,
                       解释="「遍历…每个…」需要一串东西，比如列表、字典或文字",
@@ -698,6 +886,22 @@ def _转小数(a):
         raise ValueError(f"没法把 {显示(a)} 变成小数") from None
 
 
+def _包含(容器, 项):
+    return _规范字典标签(项) in 容器 if isinstance(容器, dict) else 项 in 容器
+
+
+def _所有标签(字):
+    return [_还原字典标签(k) for k in 字.keys()]
+
+
+def _有标签(字, 标签):
+    return _规范字典标签(标签) in 字
+
+
+def _删标签(字, 标签):
+    return 字.pop(_规范字典标签(标签), None)
+
+
 内置们 = {
     "打印": _内置_打印,
     "询问": _询问,
@@ -721,12 +925,12 @@ def _转小数(a):
     "弹出": lambda 表, *a: 表.pop(int(a[0])) if a else 表.pop(),
     "排序": lambda 表: sorted(表),
     "倒序": lambda 表: list(reversed(表)),
-    "包含": lambda 容器, 项: 项 in 容器,
+    "包含": _包含,
     "连接": lambda 表, 隔: 隔.join(显示(x) for x in 表),
-    "所有标签": lambda 字: list(字.keys()),
+    "所有标签": _所有标签,
     "所有值": lambda 字: list(字.values()),
-    "有标签": lambda 字, 标签: 标签 in 字,
-    "删标签": lambda 字, 标签: 字.pop(标签, None),
+    "有标签": _有标签,
+    "删标签": _删标签,
     "分割": _分割,
     "替换": lambda 文, 旧, 新: 文.replace(旧, 新),
     "查找": lambda 文, 子: 文.find(子),
@@ -736,6 +940,7 @@ def _转小数(a):
     "开头是": lambda 文, 前: 文.startswith(前),
     "结尾是": lambda 文, 后: 文.endswith(后),
 }
+内置们 = {名: _语言内置(实现) for 名, 实现 in 内置们.items()}
 
 
 def 建全局环境():

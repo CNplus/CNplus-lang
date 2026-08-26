@@ -8,6 +8,7 @@
 """
 import subprocess
 import sys
+import types
 from pathlib import Path
 
 import pytest
@@ -126,6 +127,104 @@ def test_生成的py不含cnplus导入(tmp_path: Path):
     导入行 = [l for l in 文本.splitlines()
             if l.lstrip().startswith(("import cnplus", "from cnplus"))]
     assert 导入行 == [], f"生成的文件不该依赖 cnplus：{导入行}"
+
+
+def test_导入模块的字典属性重新纳入标签合同():
+    码 = '导入 "json" 作为 J\n打印(有标签(J.decoder.BACKSLASH, "n"))'
+    树输出, 树错 = _跑(码, 树遍历后端)
+    译输出, 译错 = _跑(码, Python转译后端)
+    assert 树错 == [] and 译错 == []
+    assert 树输出 == 译输出 == ["真"]
+
+
+def test_宿主函数仍可原位修改纯列表():
+    码 = '导入 "heapq" 作为 H\n设 数们 = [1, 3]\nH.heappush(数们, 2)\n打印(数们)'
+    树输出, 树错 = _跑(码, 树遍历后端)
+    译输出, 译错 = _跑(码, Python转译后端)
+    assert 树错 == [] and 译错 == []
+    assert 树输出 == 译输出 == ["[1, 3, 2]"]
+
+
+def test_宿主字典标签碰撞稳定报CN0303():
+    码 = ('导入 "builtins" 作为 B\n'
+          '设 字典 = {真: "布尔", 1: "整数"}\n'
+          '打印(B.len(字典))')
+    for 后端 in (树遍历后端, Python转译后端):
+        _输出, 错 = _跑(码, 后端)
+        assert 错 == ["CN0303"]
+
+
+def test_嵌套宿主字典标签碰撞不会静默丢数据():
+    码 = ('导入 "json" 作为 J\n'
+          '设 外层 = {"内层": {真: "布尔", 1: "整数"}}\n'
+          '打印(J.dumps(外层))')
+    for 后端 in (树遍历后端, Python转译后端):
+        _输出, 错 = _跑(码, 后端)
+        assert 错 == ["CN0303"]
+
+
+def test_循环容器跨宿主边界不会无限递归():
+    码 = ('导入 "builtins" 作为 B\n'
+          '设 列表 = []\n追加(列表, 列表)\n打印(B.repr(列表))\n'
+          '设 字典 = {}\n字典["自己"] = 字典\n打印(B.repr(字典))')
+    树输出, 树错 = _跑(码, 树遍历后端)
+    译输出, 译错 = _跑(码, Python转译后端)
+    assert 树错 == [] and 译错 == []
+    assert 树输出 == 译输出 == ["[[...]]", "{'自己': {...}}"]
+
+
+def test_宿主返回纯循环列表保留结构():
+    模块名 = "_cnplus_test_cycle_host"
+    模块 = types.ModuleType(模块名)
+
+    def 造循环():
+        值 = []
+        值.append(值)
+        return 值
+
+    setattr(模块, "造循环", 造循环)
+    sys.modules[模块名] = 模块
+    try:
+        码 = (f'导入 "{模块名}" 作为 M\n设 值 = M.造循环()\n'
+              '打印(长度(值))\n打印(值[0] == 值)')
+        树输出, 树错 = _跑(码, 树遍历后端)
+        译输出, 译错 = _跑(码, Python转译后端)
+        assert 树错 == [] and 译错 == []
+        assert 树输出 == 译输出 == ["1", "真"]
+    finally:
+        sys.modules.pop(模块名, None)
+
+
+def test_宿主字典非法标签属性稳定报CN0303():
+    模块名 = "_cnplus_test_bad_key_host"
+    模块 = types.ModuleType(模块名)
+    setattr(模块, "坏字典", {(1, 2): "值"})
+    sys.modules[模块名] = 模块
+    try:
+        码 = f'导入 "{模块名}" 作为 M\n打印(M.坏字典)'
+        for 后端 in (树遍历后端, Python转译后端):
+            _输出, 错 = _跑(码, 后端)
+            assert 错 == ["CN0303"]
+    finally:
+        sys.modules.pop(模块名, None)
+
+
+def test_宿主元组递归转换为语言列表():
+    模块名 = "_cnplus_test_tuple_host"
+    模块 = types.ModuleType(模块名)
+    setattr(模块, "造元组", lambda: ({"甲": 1},))
+    setattr(模块, "造嵌套", lambda: {"外": ({"内": 2},)})
+    sys.modules[模块名] = 模块
+    try:
+        码 = (f'导入 "{模块名}" 作为 M\n'
+              '设 甲 = M.造元组()\n打印(类型(甲))\n打印(有标签(甲[0], "甲"))\n'
+              '设 乙 = M.造嵌套()\n打印(乙["外"][0]["内"])')
+        树输出, 树错 = _跑(码, 树遍历后端)
+        译输出, 译错 = _跑(码, Python转译后端)
+        assert 树错 == [] and 译错 == []
+        assert 树输出 == 译输出 == ["列表", "真", "2"]
+    finally:
+        sys.modules.pop(模块名, None)
 
 
 # ==================== 导入 Python 库 ====================
