@@ -734,6 +734,9 @@ class 树遍历后端(后端):
                         return 内置项.实现(*实参)
                     except 运行时错误:
                         raise
+                    except IndexError as ex:
+                        raise 运行时错误(CN0308_下标越界,
+                                      f"调用 {方法名} 出错：{ex}", e.跨) from None
                     except Exception as ex:
                         raise 运行时错误(CN0303_类型不匹配,
                                       f"调用 {方法名} 出错：{ex}", e.跨) from None
@@ -774,6 +777,10 @@ class 树遍历后端(后端):
                 return 被调.实现(*实参)
             except 运行时错误:
                 raise
+            except IndexError as ex:
+                raise 运行时错误(CN0308_下标越界, str(ex), e.跨,
+                              解释="要弹出的位置不在列表范围内",
+                              提示="先用「长度(列表)」检查列表是否为空或位置是否存在") from None
             except EOFError as ex:
                 # 内置函数没有 span，在调用点补上
                 raise 运行时错误(CN0310_输入结束, str(ex), e.跨,
@@ -890,15 +897,31 @@ def _转整数(a):
 
 
 def _转小数(a):
+    import math
     try:
-        return float(a)
-    except (ValueError, TypeError):
+        结果 = float(a)
+    except (ValueError, TypeError, OverflowError):
         raise ValueError(f"没法把 {显示(a)} 变成小数") from None
+    if not math.isfinite(结果):
+        raise ValueError("小数超出了能表示的范围")
+    return 结果
 
 
 def _范围(*参数):
     """范围(5) / 范围(1, 6) / 范围(1, 10, 2) —— 返回列表，方便直接遍历。"""
-    return list(range(*[int(x) for x in 参数]))
+    if not all(isinstance(x, int) and not isinstance(x, bool) for x in 参数):
+        raise TypeError("范围的参数必须是整数")
+    return list(range(*参数))
+
+
+def _随机数(起, 止):
+    import random
+    if any(isinstance(x, bool) or not isinstance(x, (int, float)) for x in (起, 止)):
+        raise TypeError("随机数的端点必须是数值")
+    起整数, 止整数 = int(起), int(止)
+    if 起整数 > 止整数:
+        raise ValueError("随机数的起点不能大于终点")
+    return random.randint(起整数, 止整数)
 
 
 def _求和(序列):
@@ -907,12 +930,151 @@ def _求和(序列):
     return sum(序列)
 
 
+def _四舍五入(值, 位数=None):
+    from decimal import Decimal, ROUND_HALF_UP, localcontext
+    if isinstance(值, bool) or not isinstance(值, (int, float)):
+        raise TypeError("四舍五入只能用于数字")
+    if 位数 is not None and (isinstance(位数, bool) or not isinstance(位数, int)):
+        raise TypeError("四舍五入的小数位数必须是整数")
+    if isinstance(值, int):
+        if 位数 is None or 位数 >= 0:
+            return 值
+        位 = -位数
+        if 位 > len(str(abs(值))):
+            return 0
+        倍 = 10 ** 位
+        商, 余 = divmod(abs(值), 倍)
+        if 余 * 2 >= 倍:
+            商 += 1
+        return (-1 if 值 < 0 else 1) * 商 * 倍
+    if 位数 is None:
+        位数, 返回整数 = 0, True
+    else:
+        返回整数 = False
+    if 位数 > 308:
+        return 值
+    if 位数 < -324:
+        return -0.0 if 值 < 0 else 0.0
+    with localcontext() as 上下文:
+        上下文.prec = max(50, abs(位数) + 30)
+        结果 = Decimal(str(值)).quantize(
+            Decimal(1).scaleb(-位数), rounding=ROUND_HALF_UP)
+    return int(结果) if 返回整数 else float(结果)
+
+
+def _平方根(值):
+    if isinstance(值, bool) or not isinstance(值, (int, float)):
+        raise TypeError("平方根只能用于数字")
+    if 值 < 0:
+        raise ValueError("负数没有实数平方根")
+    return 值 ** 0.5
+
+
+def _极值(取最大, *参数):
+    值们 = list(参数[0]) if len(参数) == 1 and isinstance(参数[0], (list, str)) else list(参数)
+    if not 值们:
+        raise ValueError("至少要给一个值")
+    当前 = 值们[0]
+    for 值 in 值们[1:]:
+        当前数 = isinstance(当前, (int, float)) and not isinstance(当前, bool)
+        值数 = isinstance(值, (int, float)) and not isinstance(值, bool)
+        if 当前数 and 值数:
+            assert isinstance(当前, (int, float)) and isinstance(值, (int, float))
+            更合适 = 值 > 当前 if 取最大 else 值 < 当前
+        elif isinstance(当前, str) and isinstance(值, str):
+            更合适 = 值 > 当前 if 取最大 else 值 < 当前
+        else:
+            raise TypeError(f"不能比较{类型名(当前)}和{类型名(值)}")
+        if 更合适:
+            当前 = 值
+    return 当前
+
+
 def _分割(文字, 分隔符=None):
+    if 分隔符 == "":
+        return list(文字)
     return 文字.split(分隔符) if 分隔符 is not None else 文字.split()
 
 
+def _替换(文字, 旧, 新):
+    if 旧 == "":
+        return 新 if 文字 == "" else 新 + 新.join(文字) + 新
+    return 文字.replace(旧, 新)
+
+
+def _内置值相等(左, 右, 已见=None):
+    if 左 is None or 右 is None:
+        return 左 is 右
+    左数 = isinstance(左, (int, float)) and not isinstance(左, bool)
+    右数 = isinstance(右, (int, float)) and not isinstance(右, bool)
+    if 左数 or 右数:
+        if not (左数 and 右数):
+            raise TypeError(f"不能比较{类型名(左)}和{类型名(右)}")
+        return 左 == 右
+    if type(左) is not type(右):
+        raise TypeError(f"不能比较{类型名(左)}和{类型名(右)}")
+    if isinstance(左, (list, dict)):
+        if 左 is 右:
+            return True
+        已见 = set() if 已见 is None else 已见
+        对 = (id(左), id(右))
+        if 对 in 已见:
+            return True
+        已见.add(对)
+    if isinstance(左, list):
+        assert isinstance(右, list)
+        相等 = len(左) == len(右)
+        for a, b in zip(左, 右):
+            if not _内置值相等(a, b, 已见):
+                相等 = False
+        return 相等
+    if isinstance(左, dict):
+        assert isinstance(右, dict)
+        相等 = len(左) == len(右)
+        for k, v in 左.items():
+            if k not in 右 or not _内置值相等(v, 右[k], 已见):
+                相等 = False
+        return 相等
+    if isinstance(左, 实例值):
+        return 左 is 右
+    return 左 == 右
+
+
 def _包含(容器, 项):
-    return 规范字典标签(项) in 容器 if isinstance(容器, dict) else 项 in 容器
+    if isinstance(容器, dict):
+        return 规范字典标签(项) in 容器
+    if isinstance(容器, list):
+        return any(_内置值相等(已有, 项) for 已有 in 容器)
+    return 项 in 容器
+
+
+def _移除(表, 项):
+    for i, 已有 in enumerate(表):
+        if _内置值相等(已有, 项):
+            表.pop(i)
+            return None
+    raise ValueError(f"列表里没有 {显示(项)}")
+
+
+def _插入(表, 位置, 项):
+    if isinstance(位置, bool) or not isinstance(位置, int):
+        raise TypeError("插入的位置必须是整数")
+    实际位置 = max(0, len(表) + 位置) if 位置 < 0 else min(len(表), 位置)
+    表.insert(实际位置, 项)
+
+
+def _弹出(表, *位置):
+    if not 位置:
+        if not 表:
+            raise IndexError("空列表没有东西可以弹出")
+        return 表.pop()
+    位 = 位置[0]
+    if isinstance(位, bool) or not isinstance(位, int):
+        raise TypeError("弹出的位置必须是整数")
+    实际位置 = 位 if 位 >= 0 else len(表) + 位
+    if 实际位置 < 0 or 实际位置 >= len(表):
+        raise IndexError(f"弹出位置 {位} 超出范围")
+    return 表.pop(实际位置)
 
 
 def _所有标签(字):
@@ -924,7 +1086,8 @@ def _有标签(字, 标签):
 
 
 def _删标签(字, 标签):
-    return 字.pop(规范字典标签(标签), None)
+    字.pop(规范字典标签(标签), None)
+    return None
 
 
 def _询问(提示, 读一行):
@@ -985,19 +1148,19 @@ def 内置表(打印实现, 读一行=None):
         # ---- 通用 ----
         ("长度", 1, len),
         ("范围", -3, _范围),
-        ("随机数", 2, lambda a, b: random.randint(int(a), int(b))),
+        ("随机数", 2, _随机数),
         # ---- 数学 ----
         ("绝对值", 1, abs),
-        ("最大", -1, lambda *a: max(a[0]) if len(a) == 1 else max(a)),
-        ("最小", -1, lambda *a: min(a[0]) if len(a) == 1 else min(a)),
+        ("最大", -1, lambda *a: _极值(True, *a)),
+        ("最小", -1, lambda *a: _极值(False, *a)),
         ("求和", 1, _求和),
-        ("四舍五入", -2, lambda *a: round(*a)),
-        ("平方根", 1, lambda a: a ** 0.5),
+        ("四舍五入", -2, _四舍五入),
+        ("平方根", 1, _平方根),
         # ---- 列表 ----
         ("追加", 2, lambda 表, 项: 表.append(项)),
-        ("插入", 3, lambda 表, 位, 项: 表.insert(int(位), 项)),
-        ("移除", 2, lambda 表, 项: 表.remove(项)),
-        ("弹出", -2, lambda *a: a[0].pop(int(a[1])) if len(a) > 1 else a[0].pop()),
+        ("插入", 3, _插入),
+        ("移除", 2, _移除),
+        ("弹出", -2, _弹出),
         ("排序", 1, lambda 表: sorted(表)),
         ("倒序", 1, lambda 表: list(reversed(表))),
         ("包含", 2, _包含),
@@ -1009,7 +1172,7 @@ def 内置表(打印实现, 读一行=None):
         ("删标签", 2, _删标签),
         # ---- 字符串 ----
         ("分割", -2, _分割),
-        ("替换", 3, lambda 文, 旧, 新: 文.replace(旧, 新)),
+        ("替换", 3, _替换),
         ("查找", 2, lambda 文, 子: 文.find(子)),
         ("去空白", 1, lambda 文: 文.strip()),
         ("大写", 1, lambda 文: 文.upper()),

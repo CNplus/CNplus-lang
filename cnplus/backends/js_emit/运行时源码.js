@@ -901,7 +901,7 @@ function _内置_打印(...值们) {
 function _转整数(a) {
     a = 拆小数(a);
     if (typeof a === "bigint") return a;
-    if (typeof a === "number" && Number.isInteger(a)) return BigInt(a);
+    if (typeof a === "number" && Number.isFinite(a)) return BigInt(Math.trunc(a));
     if (typeof a === "string" && /^[+-]?\d+$/.test(a.trim())) {
         return BigInt(a.trim());
     }
@@ -924,8 +924,7 @@ function _范围(...参数) {
     const 们 = 参数.map(x => {
         const v = 拆小数(x);
         if (typeof v === "bigint") return v;
-        if (typeof v === "number" && Number.isFinite(v)) return BigInt(Math.trunc(v));
-        throw new CNplus错误("CN0303", "范围的参数必须是数字", 0, 0);
+        throw new CNplus错误("CN0303", "范围的参数必须是整数", 0, 0);
     });
     if (们.length === 1) {
         const 出 = [];
@@ -1025,8 +1024,79 @@ function _绝对值(v) {
 }
 
 
+function _四舍五入(值, 位数 = undefined) {
+    if (!是数(值)) throw new CNplus错误("CN0303", "四舍五入只能用于数字", 0, 0);
+    const 指定位数 = typeof 位数 !== "undefined";
+    let 位 = 0n;
+    if (指定位数) {
+        const 原位 = 拆小数(位数);
+        if (typeof 原位 !== "bigint")
+            throw new CNplus错误("CN0303", "四舍五入的小数位数必须是整数", 0, 0);
+        位 = 原位;
+    }
+    const 原值 = 拆小数(值);
+    if (typeof 原值 === "bigint") {
+        if (!指定位数 || 位 >= 0n) return 原值;
+        const 位数值 = -位;
+        const 绝对值 = 原值 < 0n ? -原值 : 原值;
+        if (位数值 > BigInt(绝对值.toString().length)) return 0n;
+        const 倍 = 10n ** 位数值;
+        let 商 = 绝对值 / 倍;
+        if ((绝对值 % 倍) * 2n >= 倍) 商 += 1n;
+        return (原值 < 0n ? -商 : 商) * 倍;
+    }
+    const 负 = 原值 < 0;
+    const 绝对值 = Math.abs(原值);
+    let 舍后;
+    if (位 > 308n) 舍后 = 绝对值;
+    else if (位 < -324n) 舍后 = 0;
+    else {
+        const 位数字 = Number(位);
+        const [系数, 指数文 = "0"] = 绝对值.toString().split("e");
+        const 移位 = Number(`${系数}e${Number(指数文) + 位数字}`);
+        舍后 = Number.isFinite(移位)
+            ? Number(`${Math.floor(移位 + 0.5)}e${-位数字}`)
+            : 绝对值;
+    }
+    const 结果 = 负 ? -舍后 : 舍后;
+    return 指定位数 ? 标记小数(结果) : BigInt(Math.trunc(结果));
+}
+
+
+function _平方根(值) {
+    if (!是数(值)) throw new CNplus错误("CN0303", "平方根只能用于数字", 0, 0);
+    const 数 = _到Number(值);
+    if (数 < 0) throw new CNplus错误("CN0303", "负数没有实数平方根", 0, 0);
+    return 标记小数(Math.sqrt(数));
+}
+
+
+function _分割(文, 分隔符 = undefined) {
+    if (typeof 分隔符 === "undefined" || 分隔符 === null) {
+        const 去空 = 文.trim();
+        return 去空 === "" ? [] : 去空.split(/\s+/u);
+    }
+    return 分隔符 === "" ? [...文] : 文.split(分隔符);
+}
+
+
+function _替换(文, 旧, 新) {
+    if (旧 === "") return 文 === "" ? 新 : 新 + [...文].join(新) + 新;
+    return 文.split(旧).join(新);
+}
+
+
+function _查找(文, 子) {
+    const utf16位置 = 文.indexOf(子);
+    if (utf16位置 < 0) return -1n;
+    return BigInt([...文.slice(0, utf16位置)].length);
+}
+
+
 function _极值(取最大, ...参数) {
-    const 值们 = 参数.length === 1 && Array.isArray(参数[0]) ? 参数[0] : 参数;
+    const 单个 = 参数.length === 1 ? 参数[0] : null;
+    const 值们 = Array.isArray(单个) ? 单个 :
+        typeof 单个 === "string" ? [...单个] : 参数;
     if (值们.length === 0) throw new CNplus错误("CN0303", "至少要给一个值", 0, 0);
     return 值们.reduce((当前, 值) =>
         (取最大 ? 大于(值, 当前, 0, 0) : 小于(值, 当前, 0, 0)) ? 值 : 当前);
@@ -1052,8 +1122,9 @@ function _随机BigInt下于(上限) {
 
 function _随机端点(v) {
     const 值 = 拆小数(v);
+    if (typeof 值 === "bigint") return 值;
     if (typeof 值 === "number" && Number.isFinite(值)) return BigInt(Math.trunc(值));
-    return _转整数(值);
+    throw new CNplus错误("CN0303", "随机数的端点必须是数值", 0, 0);
 }
 
 
@@ -1067,6 +1138,13 @@ function _随机整数(a, b) {
 function _带位置内置(实现) {
     const 包装 = (...实参们) => 实现(...实参们, 0, 0);
     包装._按位置调用 = (实参们, 行, 列) => 实现(...实参们, 行, 列);
+    return 包装;
+}
+
+
+function _带位置参数内置(实现) {
+    const 包装 = (...实参们) => 实现(实参们, 0, 0);
+    包装._按位置调用 = (实参们, 行, 列) => 实现(实参们, 行, 列);
     return 包装;
 }
 
@@ -1087,32 +1165,63 @@ const 内置们 = {
     "最大": (...a) => _极值(true, ...a),
     "最小": (...a) => _极值(false, ...a),
     "求和": _求和,
-    "四舍五入": (a) => typeof a === "bigint" ? a : BigInt(Math.round(_到Number(a))),
-    "平方根": (a) => 标记小数(Math.sqrt(_到Number(a))),
+    "四舍五入": _四舍五入,
+    "平方根": _平方根,
     "追加": (表, 项) => { 表.push(项); },
-    "插入": (表, 位, 项) => 表.splice(_位置数(位), 0, 项),
-    "移除": (表, 项) => {
-        const i = 表.indexOf(项);
+    "插入": _带位置内置((表, 位, 项, 行, 列) => {
+        const 原位 = 拆小数(位);
+        if (typeof 原位 !== "bigint") {
+            throw new CNplus错误("CN0303", "插入的位置必须是整数", 行, 列);
+        }
+        let 实际位置;
+        const 长 = BigInt(表.length);
+        if (原位 < 0n) 实际位置 = 原位 < -长 ? 0 : Number(长 + 原位);
+        else 实际位置 = 原位 > 长 ? 表.length : Number(原位);
+        表.splice(实际位置, 0, 项);
+    }),
+    "移除": _带位置内置((表, 项, 行, 列) => {
+        let i = -1;
+        for (let j = 0; j < 表.length; j++) {
+            if (_值相等(表[j], 项, 行, 列)) { i = j; break; }
+        }
         if (i === -1) throw new CNplus错误("CN0303",
-            `列表里没有 ${显示(项)}`, 0, 0, "检查要移除的东西在不在列表里");
+            `列表里没有 ${显示(项)}`, 行, 列, "检查要移除的东西在不在列表里");
         表.splice(i, 1);
-    },
-    "弹出": (表, ...a) => a.length ? 表.splice(_位置数(a[0]), 1)[0] : 表.pop(),
-    "排序": (表) => [...表].sort((a, b) => _排序比较(a, b)),
+    }),
+    "弹出": _带位置参数内置((实参们, 行, 列) => {
+        const [表, ...位置] = 实参们;
+        if (位置.length === 0) {
+            if (表.length === 0) throw new CNplus错误("CN0308",
+                "空列表没有东西可以弹出", 行, 列,
+                "要弹出的位置不在列表范围内", "先用「长度(列表)」检查列表是否为空");
+            return 表.pop();
+        }
+        const i = _序列下标(位置[0], 表.length, 行, 列, false);
+        return 表.splice(i, 1)[0];
+    }),
+    "排序": _带位置内置((表, 行, 列) =>
+        [...表].sort((a, b) => _排序比较(a, b, 行, 列))),
     "倒序": (表) => [...表].reverse(),
-    "包含": _带位置内置((容器, 项, 行, 列) =>
-        容器 instanceof Map ? 容器.has(_字典标签(项, 行, 列)) : 容器.includes(项)),
+    "包含": _带位置内置((容器, 项, 行, 列) => {
+        if (容器 instanceof Map) return 容器.has(_字典标签(项, 行, 列));
+        if (Array.isArray(容器)) {
+            for (const 已有 of 容器) if (_值相等(已有, 项, 行, 列)) return true;
+            return false;
+        }
+        return 容器.includes(项);
+    }),
     "连接": (表, 隔) => 表.map(x => 显示(x)).join(隔),
     "所有标签": (字) => [...字.keys()],
     "所有值": (字) => [...字.values()],
     "有标签": _带位置内置((字, 标签, 行, 列) =>
         字.has(_字典标签(标签, 行, 列))),
-    "删标签": _带位置内置((字, 标签, 行, 列) =>
-        字.delete(_字典标签(标签, 行, 列))),
-    "分割": (文, 分隔符) => 分隔符 !== undefined && 分隔符 !== null
-        ? 文.split(分隔符) : 文.trim().split(/\s+/),
-    "替换": (文, 旧, 新) => 文.split(旧).join(新),
-    "查找": (文, 子) => BigInt(文.indexOf(子)),
+    "删标签": _带位置内置((字, 标签, 行, 列) => {
+        字.delete(_字典标签(标签, 行, 列));
+        return null;
+    }),
+    "分割": _分割,
+    "替换": _替换,
+    "查找": _查找,
     "去空白": (文) => 文.trim(),
     "大写": (文) => 文.toUpperCase(),
     "小写": (文) => 文.toLowerCase(),
@@ -1121,10 +1230,13 @@ const 内置们 = {
 };
 
 
-function _排序比较(a, b) {
+function _排序比较(a, b, 行 = 0, 列 = 0) {
     a = 拆小数(a); b = 拆小数(b);
     if (是数(a) && 是数(b)) return a < b ? -1 : a > b ? 1 : 0;
-    return String(a) < String(b) ? -1 : String(a) > String(b) ? 1 : 0;
+    if (typeof a === "string" && typeof b === "string") {
+        return a < b ? -1 : a > b ? 1 : 0;
+    }
+    throw new CNplus错误("CN0303", "排序的项目必须全是数值或全是文字", 行, 列);
 }
 
 
