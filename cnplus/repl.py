@@ -8,13 +8,19 @@
 """
 from __future__ import annotations
 
+from cnplus.backends.base import 运行时错误
 from cnplus.backends.treewalk.evaluator import 环境, 树遍历后端
 from cnplus.checker import 检查器
 from cnplus.diagnostics import 诊断袋
+from cnplus.lexer.lexer import 词法器
+from cnplus.lexer.tokens import 种类
 from cnplus.parser.parser import 解析
 from cnplus.source import 源文件
 
-_块开头词 = ("函数", "类", "如果", "否则", "循环", "遍历", "尝试", "初始化")
+_块开头种类 = {
+    种类.函数, 种类.类, 种类.如果, 种类.否则, 种类.循环,
+    种类.遍历, 种类.对于, 种类.尝试, 种类.捕获, 种类.最后, 种类.初始化,
+}
 
 
 class 交互解释器:
@@ -49,24 +55,33 @@ class 交互解释器:
                 from cnplus.parser.ast import 程序 as 程序类
                 程 = 程序类(语句们=tuple(语句们), 跨=程.跨)
                 self.后端.执行(程, 源, 袋, 顶层环境=self.环)
-            else:
-                袋2 = 诊断袋()
-                self.后端.执行(程, 源, 袋2, 顶层环境=self.环)
             if 回显 is not None and not 袋.有错:
                 值 = self.后端._求值(回显, self.环)
                 from cnplus.runtime.values import 显示
                 if 值 is not None:
                     self.输出行.append(显示(值))
+        except 运行时错误 as 错:
+            错源 = 错.源 or 源
+            袋.报告(错.码, 错.消息, 错.跨, 提示=错.提示, 解释=错.解释)
+            return [袋.渲染全部(错源)]
         finally:
             self.后端._输出回调 = None
         if 袋.有错:
-            return [袋.渲染全部(源)]
+            return [袋.渲染全部(self.后端._最后错误源 or 源)]
         return self.输出行
 
     @staticmethod
     def 是块开头(行: str) -> bool:
-        首 = 行.strip()
-        return any(首.startswith(词) for 词 in _块开头词)
+        词们, _袋 = 词法器(源文件(行, "<交互判断>")).扫描()
+        首 = next((词.种 for 词 in 词们
+                   if 词.种 not in (种类.换行, 种类.缩进, 种类.退缩, 种类.文件尾)), None)
+        return 首 in _块开头种类
+
+    @staticmethod
+    def 括号未闭合(文本: str) -> bool:
+        词法 = 词法器(源文件(文本, "<交互判断>"))
+        词法.扫描()
+        return 词法.括号深度 > 0
 
 
 def 交互循环(输入们=None, 输出=None, 提示=None) -> None:
@@ -88,28 +103,33 @@ def 交互循环(输入们=None, 输出=None, 提示=None) -> None:
 
     写("CNplus 交互模式 —— 输入代码立即执行；输入「退出」或 Ctrl-D 离开")
     缓冲: list[str] = []
-    在块内 = False
+    是块 = False
     while True:
+        片段: str | None = None
         出提示()
         行 = 读行()
         if 行 is None:
+            if 缓冲:
+                for 一行 in 解释器.处理("\n".join(缓冲)):
+                    写(一行)
             写("")
             break
-        if not 在块内 and 行.strip() in ("退出", "exit", "quit"):
+        if not 缓冲 and 行.strip() in ("退出", "exit", "quit"):
             break
-        if not 在块内 and 交互解释器.是块开头(行):
-            在块内 = True
+        if not 缓冲:
             缓冲 = [行]
-            continue
-        if 在块内:
-            if 行.strip() == "":
-                片段 = "\n".join(缓冲)
-                在块内 = False
-                缓冲 = []
-            else:
-                缓冲.append(行)
-                continue
+            是块 = 交互解释器.是块开头(行)
+        elif 是块 and 行.strip() == "" and not 解释器.括号未闭合("\n".join(缓冲)):
+            片段 = "\n".join(缓冲)
+            缓冲 = []
+            是块 = False
         else:
-            片段 = 行
+            缓冲.append(行)
+        if 片段 is None:
+            当前 = "\n".join(缓冲)
+            if 解释器.括号未闭合(当前) or 是块:
+                continue
+            片段 = 当前
+            缓冲 = []
         for 一行 in 解释器.处理(片段):
             写(一行)

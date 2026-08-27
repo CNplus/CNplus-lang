@@ -34,3 +34,4 @@ class 运行时错误(Exception):
         self.跨 = 跨
         self.提示 = 提示
         self.解释 = 解释
+        self.源: 源文件 | None = None

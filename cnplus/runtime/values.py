@@ -8,6 +8,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 from cnplus.parser.ast import 函数声明
+from cnplus.source import 源文件
 
 
 @dataclass(frozen=True, slots=True)
@@ -123,6 +124,7 @@ def 从宿主值(值: object) -> object:
 class 函数值:
     声明: 函数声明
     闭包: object  # 环境，避免循环导入所以用 object
+    源: 源文件 | None = None
 
     def __repr__(self) -> str:
         return f"<函数 {self.声明.名}>"
@@ -138,6 +140,7 @@ class 类值:
     方法表: dict            # 名 -> 函数值
     初始化: object = None   # 函数声明 | None
     闭包环: object = None   # 类定义处的作用域（初始化块体的外层）
+    源: 源文件 | None = None
 
     def __repr__(self) -> str:
         return f"<类 {self.名}>"
