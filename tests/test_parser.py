@@ -3,9 +3,10 @@ import pytest
 
 from cnplus.parser.ast import (二元运算, 二元表达式, 函数声明, 变量引用, 声明语句,
                                如果语句, 整数字面量, 循环语句, 表达式语句,
-                               调用表达式, 赋值语句, 返回语句, 错误语句)
+                               调用表达式, 赋值语句, 返回语句, 错误语句, 格式串,
+                               字符串字面量)
 from cnplus.parser.parser import 解析
-from cnplus.source import 源文件
+from cnplus.source import 位置, 源文件
 
 
 def 析(码: str):
@@ -66,6 +67,102 @@ def test_嵌套调用():
     assert not 袋.有错
     外 = 程.语句们[0].表达
     assert isinstance(外.实参[0], 调用表达式)
+
+
+def test_插值表达式必须完整消费():
+    _程, 袋 = 析('打印(@"值：{1 2}")')
+    assert 袋.有错
+
+
+def test_插值子表达式跨度映射回原文件():
+    程, 袋 = 析('打印(@"前{未声明}后")')
+    assert not 袋.有错
+    语句 = 程.语句们[0]
+    assert isinstance(语句, 表达式语句)
+    调用 = 语句.表达
+    assert isinstance(调用, 调用表达式)
+    串 = 调用.实参[0]
+    assert isinstance(串, 格式串)
+    名 = 串.部分[1]
+    assert isinstance(名, 变量引用)
+    assert 名.跨.起.行 == 1
+    assert 名.跨.起.列 == 8
+
+
+def test_插值转义前缀不改变原文件跨度():
+    程, 袋 = 析('打印(@"\\n{未声明}")')
+    assert not 袋.有错
+    语句 = 程.语句们[0]
+    assert isinstance(语句, 表达式语句)
+    调用 = 语句.表达
+    assert isinstance(调用, 调用表达式)
+    串 = 调用.实参[0]
+    assert isinstance(串, 格式串)
+    名 = 串.部分[1]
+    assert isinstance(名, 变量引用)
+    assert 名.跨.起.列 == 9
+
+
+def test_插值里的转义引号不会提前结束字符串():
+    程, 袋 = 析(r'''打印(@"{'a\' } b'}")''')
+    assert not 袋.有错
+    语句 = 程.语句们[0]
+    assert isinstance(语句, 表达式语句)
+    调用 = 语句.表达
+    assert isinstance(调用, 调用表达式)
+    串 = 调用.实参[0]
+    assert isinstance(串, 格式串)
+    assert len(串.部分) == 1
+    值 = 串.部分[0]
+    assert isinstance(值, 字符串字面量)
+    assert 值.值 == "a' } b"
+
+
+def test_插值表达式内部转义后的变量跨度():
+    程, 袋 = 析(r'''打印(@"{造('\t', 甲)}")''')
+    assert not 袋.有错
+    语句 = 程.语句们[0]
+    assert isinstance(语句, 表达式语句)
+    外调用 = 语句.表达
+    assert isinstance(外调用, 调用表达式)
+    串 = 外调用.实参[0]
+    assert isinstance(串, 格式串)
+    内调用 = 串.部分[0]
+    assert isinstance(内调用, 调用表达式)
+    名 = 内调用.实参[1]
+    assert isinstance(名, 变量引用)
+    assert 名.跨.起.列 == 15
+
+
+def test_插值在非零基位置源码中不重复偏移():
+    源 = 源文件('打印(@"前{甲}")', "嵌入.cnp", 基位置=位置(3, 5, 100))
+    程, 袋 = 解析(源)
+    assert not 袋.有错
+    语句 = 程.语句们[0]
+    assert isinstance(语句, 表达式语句)
+    调用 = 语句.表达
+    assert isinstance(调用, 调用表达式)
+    串 = 调用.实参[0]
+    assert isinstance(串, 格式串)
+    名 = 串.部分[1]
+    assert isinstance(名, 变量引用)
+    assert 名.跨.起 == 位置(行=3, 列=12, 偏移=107)
+
+
+def test_嵌套插值保留原文件跨度():
+    程, 袋 = 析("打印(@'外{@\"内{甲}\"}尾')")
+    assert not 袋.有错
+    语句 = 程.语句们[0]
+    assert isinstance(语句, 表达式语句)
+    外调用 = 语句.表达
+    assert isinstance(外调用, 调用表达式)
+    外串 = 外调用.实参[0]
+    assert isinstance(外串, 格式串)
+    内串 = 外串.部分[1]
+    assert isinstance(内串, 格式串)
+    名 = 内串.部分[1]
+    assert isinstance(名, 变量引用)
+    assert 名.跨.起 == 位置(行=1, 列=12, 偏移=11)
 
 
 def test_如果否则():
