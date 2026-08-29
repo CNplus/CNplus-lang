@@ -115,6 +115,21 @@ def test_语法错误时不做静态检查():
 
 # ---- LSP 层 ----
 
+def test_lsp可选依赖只声明pygls二代():
+    import tomllib
+    from pathlib import Path
+
+    配置 = tomllib.loads((Path(__file__).parents[1] / "pyproject.toml").read_text())
+    assert 配置["project"]["optional-dependencies"]["lsp"] == ["pygls>=2,<3"]
+
+
+def test_vscode探测会验证语言服务依赖():
+    from pathlib import Path
+
+    扩展 = (Path(__file__).parents[1] / "editors/vscode/extension.js").read_text()
+    assert "import cnplus,cnplus.lsp.server,sys" in 扩展
+
+
 def test_lsp诊断文本():
     pytest.importorskip("pygls")
     from cnplus.lsp.server import 诊断文本
@@ -128,6 +143,44 @@ def test_lsp诊断文本():
     # 波浪线必须有宽度，否则 VSCode 不画
     assert d.range.end.character > d.range.start.character
     assert "提示" in d.message
+
+
+@pytest.mark.parametrize("码", ["函数", '打印("😀"', "设 名字 =", "如果 真\n"])
+def test_lsp诊断范围不越过行尾(码):
+    pytest.importorskip("pygls")
+    from cnplus.lsp.server import 诊断文本
+
+    行长们 = [len(行.encode("utf-16-le")) // 2 for 行 in 码.split("\n")]
+    for 诊断 in 诊断文本(码):
+        assert 诊断.range.end.character <= 行长们[诊断.range.end.line]
+
+
+def test_lsp诊断列按utf16计算():
+    pytest.importorskip("pygls")
+    from cnplus.lsp.server import 诊断文本
+
+    码 = '打印("😀", 未知)'
+    d = next(项 for 项 in 诊断文本(码, "t.cnp") if 项.code == "CN0302")
+    前缀 = '打印("😀", '
+    assert d.range.start.character == len(前缀.encode("utf-16-le")) // 2
+    assert d.range.end.character == len((前缀 + "未知").encode("utf-16-le")) // 2
+
+
+def test_lsp输入列从utf16转为内部码点列():
+    pytest.importorskip("pygls")
+    from cnplus.lsp.server import _LSP列转内部列
+
+    assert _LSP列转内部列("😀名字", 2) == 2
+    assert _LSP列转内部列("😀名字", 4) == 4
+
+
+def test_lsp范围覆盖完整标识符():
+    pytest.importorskip("pygls")
+    from cnplus.lsp.server import _跨度转LSP范围
+
+    源 = 源文件("函数 算等级")
+    范围 = _跨度转LSP范围(源, 源.跨度于(3, 6))
+    assert (范围.start.character, 范围.end.character) == (3, 6)
 
 
 @pytest.mark.parametrize("码", [

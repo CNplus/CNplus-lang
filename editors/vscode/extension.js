@@ -59,7 +59,7 @@ function 试解释器(可执行) {
   return new Promise((完成) => {
     execFile(
       可执行,
-      ["-c", "import cnplus,sys; print(cnplus.__version__); print(sys.version_info[:2])"],
+      ["-c", "import cnplus,cnplus.lsp.server,sys; print(cnplus.__version__); print(sys.version_info[:2])"],
       { timeout: 8000 },
       (错, 标准输出) => 完成(错 ? null : 标准输出.trim())
     );
@@ -172,7 +172,7 @@ function activate(上下文) {
     if (!解释器) {
       // 语法高亮不依赖 LSP，所以这里只提示、不报错阻断
       vscode.window.showWarningMessage(
-        "CNplus：未找到装了 cnplus 的 Python，实时诊断已停用（语法高亮仍可用）。" +
+        "CNplus：未找到可启动语言服务的 Python（需安装 cnplus[lsp]），实时诊断已停用（语法高亮仍可用）。" +
           "运行命令「CNplus: 显示当前使用的解释器」可查看探测详情。"
       );
       return;

@@ -186,6 +186,7 @@ class 多重声明语句(语句):
     名们: tuple[str, ...]
     值: 表达式
     跨: 跨度
+    名跨们: tuple[跨度, ...] = ()
 
 
 @dataclass(frozen=True, slots=True)
@@ -225,6 +226,8 @@ class 函数声明(语句):
     形参: tuple[str, ...]
     主体: tuple[语句, ...]
     跨: 跨度
+    名跨: 跨度 | None = None
+    主体跨: 跨度 | None = None
     形参跨们: tuple[跨度, ...] = ()
     默认值们: tuple[表达式 | None, ...] = ()  # 与形参一一对应，None=必填
 
@@ -240,6 +243,7 @@ class 类声明(语句):
     方法们: tuple[函数声明, ...]
     初始化: 函数声明 | None      # 括号参数自动成字段；块体可选
     跨: 跨度
+    名跨: 跨度 | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -255,6 +259,8 @@ class 导入语句(语句):
     模块: str
     别名: str | None
     跨: 跨度
+    别名跨: 跨度 | None = None
+    模块跨: 跨度 | None = None
 
 
 @dataclass(frozen=True, slots=True)

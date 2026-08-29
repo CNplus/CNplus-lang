@@ -1,9 +1,9 @@
-"""LSP 服务端 —— 阶段 0.5 只做实时诊断。
+"""LSP 服务端 —— 实时诊断、补全、悬停与定义跳转。
 
 **复用同一套 lexer/parser，零重复实现。** 这是不自研 IDE（D-006）的兑现：
 写一个 server，VSCode / Neovim / Zed / JetBrains 全都能用。
 
-依赖 pygls 2.x：uv pip install -e ".[lsp]"
+依赖 pygls 2.x：pip install -e ".[lsp]"
 注意 pygls 2.x 与 1.x 的 API 不同（模块路径、推送方法名都变了）。
 """
 from __future__ import annotations
@@ -13,36 +13,73 @@ try:
     from pygls.lsp.server import LanguageServer
 except ImportError as e:  # pragma: no cover
     raise SystemExit(
-        '缺少 pygls 2.x。请先运行：uv pip install -e ".[lsp]"'
+        '缺少 pygls 2.x。请先运行：pip install -e ".[lsp]"'
     ) from e
 
 from cnplus import __version__
 from cnplus.checker import 检查
 from cnplus.diagnostics import 级别
 from cnplus.parser.parser import 解析
-from cnplus.source import 源文件
+from cnplus.source import 源文件, 跨度
 
 服务器 = LanguageServer("cnplus-lsp", __version__)
+
+
+def _内部列转LSP列(源: 源文件, 行: int, 列: int) -> int:
+    """把 1 起 Unicode 码点列转成 0 起 UTF-16 单元列。"""
+    前缀 = 源.取行(行)[:max(列 - 1, 0)]
+    return len(前缀.encode("utf-16-le")) // 2
+
+
+def _LSP列转内部列(行文本: str, LSP列: int) -> int:
+    """把 0 起 UTF-16 单元列转成 1 起 Unicode 码点列。"""
+    已走 = 0
+    for 下标, 字 in enumerate(行文本):
+        下一处 = 已走 + len(字.encode("utf-16-le")) // 2
+        if 下一处 > LSP列:
+            return 下标 + 1
+        已走 = 下一处
+        if 已走 == LSP列:
+            return 下标 + 2
+    return len(行文本) + 1
+
+
+def _跨度转LSP范围(源: 源文件, 跨: 跨度) -> lsp.Range:
+    return lsp.Range(
+        start=lsp.Position(
+            line=跨.起.行 - 1,
+            character=_内部列转LSP列(源, 跨.起.行, 跨.起.列),
+        ),
+        end=lsp.Position(
+            line=跨.止.行 - 1,
+            character=_内部列转LSP列(源, 跨.止.行, 跨.止.列),
+        ),
+    )
 
 
 def _文档与位置(ls: LanguageServer, uri: str, pos) -> tuple[str, int, int]:
     """取文档文本和 1 起行列。"""
     文档 = ls.workspace.get_text_document(uri)
-    行0, 列0 = pos.line, pos.character
-    return 文档.source, 行0 + 1, 列0 + 1
+    行0 = pos.line
+    行们 = 文档.source.split("\n")
+    行文本 = 行们[行0] if 0 <= 行0 < len(行们) else ""
+    return 文档.source, 行0 + 1, _LSP列转内部列(行文本, pos.character)
 
 
 def 转诊断(诊, 源: 源文件) -> lsp.Diagnostic:
     """CNplus 诊断 -> LSP 诊断。行列从 1 起转成从 0 起。"""
-    起 = lsp.Position(line=诊.跨.起.行 - 1, character=max(诊.跨.起.列 - 1, 0))
-    # 保证至少一格宽，否则 VSCode 不画波浪线
-    止列 = 诊.跨.止.列 - 1 if 诊.跨.止.行 != 诊.跨.起.行 else max(诊.跨.止.列 - 1, 诊.跨.起.列)
-    止 = lsp.Position(line=诊.跨.止.行 - 1, character=max(止列, 0))
+    范围 = _跨度转LSP范围(源, 诊.跨)
+    # 有可标记字符时扩成一个完整码点；行尾保持合法零宽范围，不能越界。
+    if 范围.start == 范围.end:
+        行文本 = 源.取行(诊.跨.起.行)
+        下标 = 诊.跨.起.列 - 1
+        if 0 <= 下标 < len(行文本):
+            范围.end.character += len(行文本[下标].encode("utf-16-le")) // 2
     消息 = 诊.消息
     if 诊.提示:
         消息 += f"\n提示：{诊.提示}"
     return lsp.Diagnostic(
-        range=lsp.Range(start=起, end=止),
+        range=范围,
         message=消息,
         severity=(lsp.DiagnosticSeverity.Error if 诊.级 is 级别.错误
                   else lsp.DiagnosticSeverity.Warning),
@@ -112,16 +149,12 @@ def 跳转定义(ls: LanguageServer,
     from cnplus.lsp import 跳转 as 跳转模块
     uri = 参数.text_document.uri
     码, 行, 列 = _文档与位置(ls, uri, 参数.position)
-    位置 = 跳转模块.定义于(码, 行, 列)
-    if 位置 is None:
+    跨 = 跳转模块.定义跨度于(码, 行, 列)
+    if 跨 is None:
         return None
-    行, 列 = 位置
     return lsp.Location(
         uri=uri,
-        range=lsp.Range(
-            start=lsp.Position(line=行 - 1, character=列 - 1),
-            end=lsp.Position(line=行 - 1, character=列 - 1 + 2),
-        ),
+        range=_跨度转LSP范围(源文件(码, uri), 跨),
     )
 
 
