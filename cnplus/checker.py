@@ -9,7 +9,8 @@
 from __future__ import annotations
 
 from cnplus.diagnostics import (CN0301_条件必须是布尔, CN0302_未声明变量,
-                                CN0304_除以零, CN0307_重复声明, 诊断袋)
+                                CN0304_除以零, CN0307_重复声明,
+                                CN0312_初始化不能返回值, 诊断袋)
 from cnplus.parser.ast import (二元运算, 二元表达式, 函数声明, 变量引用,
                                声明语句, 如果语句, 字符串字面量, 小数字面量,
                                布尔字面量, 循环语句, 整数字面量, 程序,
@@ -18,7 +19,8 @@ from cnplus.parser.ast import (二元运算, 二元表达式, 函数声明, 变�
                                列表字面量, 字典字面量, 索引访问, 索引赋值语句,
                                遍历语句, 跳出语句, 继续语句, 自增语句,
                                格式串, 多重声明语句, 尝试语句, 抛出语句,
-                               错误表达式, 错误语句, 一元表达式, 类声明)
+                               错误表达式, 错误语句, 一元表达式, 类声明,
+                               切片访问)
 
 def _取内置名() -> set[str]:
     """从内置表自动取名单，避免加了内置函数忘了同步（曾漏 8 个）。"""
@@ -92,6 +94,7 @@ def 提示_未声明(名: str) -> str:
 class 检查器:
     def __init__(self, 袋: 诊断袋) -> None:
         self.袋 = 袋
+        self._在初始化 = False
 
     @staticmethod
     def _近似提示(名: str, 域: "_作用域") -> str:
@@ -148,6 +151,12 @@ class 检查器:
             self._只查名字(e.对象, 域)
             self._只查名字(e.下标, 域)
             return
+        if isinstance(e, 切片访问):
+            self._只查名字(e.对象, 域)
+            for 部分 in (e.起, e.止, e.步):
+                if 部分 is not None:
+                    self._只查名字(部分, 域)
+            return
         if isinstance(e, 成员访问):
             self._只查名字(e.对象, 域)
             return
@@ -178,20 +187,23 @@ class 检查器:
                 顶层.加(s.名)
         self._块(程.语句们, 顶层)
 
-    def _初始化检查(self, s: 函数声明, 字段: tuple[str, ...],
-                  方法名: tuple[str, ...], 域: "_作用域") -> None:
-        """初始化方法体：自己 + 形参（=字段）+ 方法名 都可见。"""
+    def _初始化检查(self, s: 函数声明, 域: "_作用域") -> None:
+        """初始化方法体：自己 + 初始化形参可见；成员必须经由自己访问。"""
         内 = _作用域(域)
         内.加("自己")
         for p in s.形参:
             内.加(p)
-        for 名 in 方法名:
-            内.加(名)
+
         默认们 = s.默认值们 or ()
         for d in 默认们:
             if d is not None:
                 self._表达式(d, 域)
-        self._块(s.主体, 内)
+        原状态 = self._在初始化
+        self._在初始化 = True
+        try:
+            self._块(s.主体, 内)
+        finally:
+            self._在初始化 = 原状态
 
     def _块(self, 语句们: tuple[语句, ...], 域: _作用域) -> None:
         for s in 语句们:
@@ -242,31 +254,55 @@ class 检查器:
                 内.加(p)
             # 允许递归
             内.加(s.名)
-            self._块(s.主体, 内)
+            原状态 = self._在初始化
+            self._在初始化 = False
+            try:
+                self._块(s.主体, 内)
+            finally:
+                self._在初始化 = 原状态
             return
         if isinstance(s, 类声明):
             域.加(s.名)
-            # 方法体作用域：自己 + 形参 + 字段名（初始化的形参即字段）
+            # 方法体作用域：自己 + 形参；字段和方法必须经由自己访问
             字段 = tuple(s.初始化.形参) if s.初始化 else ()
-            # 先登记所有方法名（允许方法互调、前向引用）
-            方法名 = tuple(m.名 for m in s.方法们)
+            首次方法: dict[str, 函数声明] = {}
+            for m in s.方法们:
+                先前 = 首次方法.get(m.名)
+                if 先前 is not None:
+                    self.袋.报告(CN0307_重复声明,
+                               f"类 {s.名} 里重复声明了方法 {m.名}", m.跨,
+                               解释=f"第一次声明在第 {先前.跨.起.行} 行",
+                               提示="删除一个同名方法，或给它们不同的名字")
+                else:
+                    首次方法[m.名] = m
+
+            for m in s.方法们:
+                if m.名 in 字段:
+                    self.袋.报告(
+                        CN0307_重复声明,
+                        f"方法「{m.名}」与初始化自动字段同名",
+                        m.跨,
+                        解释="初始化参数会自动成为实例字段，同名方法会被字段遮住",
+                        提示="修改字段名或方法名，让两者不再同名",
+                    )
             if s.初始化 is not None:
-                self._初始化检查(s.初始化, 字段, 方法名, 域)
+                self._初始化检查(s.初始化, 域)
             for m in s.方法们:
                 内 = _作用域(域)
                 内.加("自己")
                 for p in m.形参:
                     内.加(p)
-                for f in 字段:
-                    内.加(f)
-                for 名 in 方法名:
-                    内.加(名)
-                内.加(m.名)
+
                 默认们 = m.默认值们 or ()
                 for d in 默认们:
                     if d is not None:
                         self._表达式(d, 域)
-                self._块(m.主体, 内)
+                原状态 = self._在初始化
+                self._在初始化 = False
+                try:
+                    self._块(m.主体, 内)
+                finally:
+                    self._在初始化 = 原状态
             return
         if isinstance(s, 自增语句):
             if not 域.有(s.名):
@@ -312,8 +348,16 @@ class 检查器:
             self._表达式(s.值, 域)
             return
         if isinstance(s, 返回语句):
+            if self._在初始化 and (s.值 is not None or s.多值):
+                self.袋.报告(
+                    CN0312_初始化不能返回值,
+                    "初始化不能返回一个值", s.跨,
+                    解释="初始化负责填好新实例，构造结果固定是这个实例本身",
+                    提示="删掉返回值；需要提前结束时只写「返回」")
             if s.值 is not None:
                 self._表达式(s.值, 域)
+            for 值 in (s.多值 or ()):
+                self._表达式(值, 域)
             return
 
     def _条件(self, e: 表达式, 域: _作用域) -> None:
@@ -382,6 +426,12 @@ class 检查器:
         if isinstance(e, 索引访问):
             self._表达式(e.对象, 域)
             self._表达式(e.下标, 域)
+            return
+        if isinstance(e, 切片访问):
+            self._表达式(e.对象, 域)
+            for 部分 in (e.起, e.止, e.步):
+                if 部分 is not None:
+                    self._表达式(部分, 域)
             return
 
 

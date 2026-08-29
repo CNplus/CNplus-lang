@@ -9,7 +9,8 @@
 from __future__ import annotations
 
 from cnplus.diagnostics import (CN0201_期望词元, CN0202_意外词元,
-                                CN0203_期望表达式, CN0204_期望缩进, 诊断袋)
+                                CN0203_期望表达式, CN0204_期望缩进,
+                                CN0307_重复声明, 诊断袋)
 from cnplus.lexer.lexer import 扫描
 from cnplus.lexer.tokens import 种类, 词元
 from cnplus.parser.ast import (一元运算, 一元表达式, 二元运算, 二元表达式,
@@ -515,7 +516,7 @@ class 解析器:
                 continue
             if isinstance(s, 函数声明) and s.名 == "初始化":
                 if 初始化声明 is not None:
-                    self.袋.报告(CN0202_意外词元,
+                    self.袋.报告(CN0307_重复声明,
                                "一个类只能有一个「初始化」",
                                s.跨,
                                解释="初始化是造实例时自动跑的那段，写两个就不知道听谁的了",
@@ -630,6 +631,7 @@ class 解析器:
         self._吃()  # [
         起: 表达式 | None = None
         止: 表达式 | None = None
+        步: 表达式 | None = None
         是切片 = False
         # 起 可省略：[ : 3] / [:]
         if self._看种() is not 种类.冒号:
@@ -638,11 +640,15 @@ class 解析器:
             是切片 = True
             self._吃()  # :
             # 止 可省略：[1:] / [:]
-            if self._看种() is not 种类.右方括号:
+            if self._看种() not in (种类.冒号, 种类.右方括号):
                 止 = self._表达式()
+            if self._看种() is 种类.冒号:
+                self._吃()
+                if self._看种() is not 种类.右方括号:
+                    步 = self._表达式()
         右 = self._期望(种类.右方括号, "右方括号 ]")
         if 是切片:
-            return 切片访问(对象=对象, 起=起, 止=止,
+            return 切片访问(对象=对象, 起=起, 止=止, 步=步,
                           跨=合并跨度(对象.跨, 右.跨))
         if 起 is None:
             # a[]：什么都没写。报错并造个错误表达式顶位

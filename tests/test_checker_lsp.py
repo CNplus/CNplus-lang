@@ -31,6 +31,11 @@ def test_未声明变量():
     assert "CN0302" in 查("y = 1")
 
 
+def test_切片四个子表达式都会检查名字():
+    码们 = 查("打印(没对象[没起:没止:没步])")
+    assert 码们.count("CN0302") == 4
+
+
 def test_除以字面量零():
     assert "CN0304" in 查("打印(1 / 0)")
     assert "CN0304" in 查("打印(1 // 0)")

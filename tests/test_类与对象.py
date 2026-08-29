@@ -218,6 +218,108 @@ def test_方法内未声明变量报CN0302():
     assert 码_ == "CN0302"
 
 
+def test_checker_拒绝方法内裸写初始化字段():
+    源 = 源文件("""
+类 学生
+    初始化(分数)
+    函数 报分()
+        打印(分数)
+""", "t.cnp")
+    程, 袋 = 解析(源)
+    assert not 袋.有错
+    检查(程, 袋)
+    assert any(d.码 == "CN0302" and "分数" in d.消息 for d in 袋)
+
+
+def test_checker_拒绝方法内裸调其他方法():
+    源 = 源文件("""
+类 学生
+    函数 名片()
+        返回 "学生"
+    函数 自我介绍()
+        打印(名片())
+""", "t.cnp")
+    程, 袋 = 解析(源)
+    assert not 袋.有错
+    检查(程, 袋)
+    assert any(d.码 == "CN0302" and "名片" in d.消息 for d in 袋)
+
+
+def test_checker_拒绝同类同名方法():
+    源 = 源文件("""
+类 学生
+    函数 名片()
+        返回 "甲"
+    函数 名片()
+        返回 "乙"
+""", "t.cnp")
+    程, 袋 = 解析(源)
+    assert not 袋.有错
+    检查(程, 袋)
+    assert any(d.码 == "CN0307" and "名片" in d.消息 for d in 袋)
+
+
+def test_双初始化统一报CN0307():
+    源 = 源文件("""
+类 学生
+    初始化(甲)
+    初始化(乙)
+""", "t.cnp")
+    _程, 袋 = 解析(源)
+    assert any(d.码 == "CN0307" for d in 袋)
+
+
+def test_checker_拒绝初始化字段与方法同名():
+    源 = 源文件("""
+类 学生
+    初始化(名片)
+    函数 名片()
+        返回 "学生"
+""", "t.cnp")
+    程, 袋 = 解析(源)
+    assert not 袋.有错
+    检查(程, 袋)
+    assert any(d.码 == "CN0307" and "名片" in d.消息 for d in 袋)
+
+
+def test_checker_拒绝初始化带值返回():
+    源 = 源文件("""
+类 学生
+    初始化()
+        返回 1
+""", "t.cnp")
+    程, 袋 = 解析(源)
+    assert not 袋.有错
+    检查(程, 袋)
+    assert any(d.码 == "CN0312" for d in 袋)
+
+
+def test_checker_拒绝初始化多值返回():
+    源 = 源文件("""
+类 学生
+    初始化()
+        返回 1, 2
+""", "t.cnp")
+    程, 袋 = 解析(源)
+    assert not 袋.有错
+    检查(程, 袋)
+    assert any(d.码 == "CN0312" for d in 袋)
+
+
+def test_checker_允许初始化内嵌套函数返回值():
+    源 = 源文件("""
+类 学生
+    初始化()
+        函数 默认分数()
+            返回 100
+        自己.分数 = 默认分数()
+""", "t.cnp")
+    程, 袋 = 解析(源)
+    assert not 袋.有错
+    检查(程, 袋)
+    assert not any(d.码 == "CN0312" for d in 袋)
+
+
 def test_顶层没有自己():
     码 = """
 打印(自己.年龄)
