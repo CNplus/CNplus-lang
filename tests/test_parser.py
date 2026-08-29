@@ -13,6 +13,11 @@ def 析(码: str):
     return 解析(源文件(码, "t.cnp"))
 
 
+def test_切片步长尚未拍板():
+    _程, 袋 = 析("打印([1, 2, 3][::2])")
+    assert any(d.码 == "CN0203" for d in 袋)
+
+
 def test_声明():
     程, 袋 = 析("令 x = 1")
     assert not 袋.有错

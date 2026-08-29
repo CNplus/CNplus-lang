@@ -282,7 +282,7 @@ def test_checker_拒绝初始化字段与方法同名():
     assert any(d.码 == "CN0307" and "名片" in d.消息 for d in 袋)
 
 
-def test_checker_拒绝初始化带值返回():
+def test_checker_允许初始化单值返回并由运行时忽略():
     源 = 源文件("""
 类 学生
     初始化()
@@ -291,10 +291,10 @@ def test_checker_拒绝初始化带值返回():
     程, 袋 = 解析(源)
     assert not 袋.有错
     检查(程, 袋)
-    assert any(d.码 == "CN0312" for d in 袋)
+    assert not 袋.有错
 
 
-def test_checker_拒绝初始化多值返回():
+def test_checker_允许初始化多值返回并由运行时忽略():
     源 = 源文件("""
 类 学生
     初始化()
@@ -303,7 +303,7 @@ def test_checker_拒绝初始化多值返回():
     程, 袋 = 解析(源)
     assert not 袋.有错
     检查(程, 袋)
-    assert any(d.码 == "CN0312" for d in 袋)
+    assert not 袋.有错
 
 
 def test_checker_允许初始化内嵌套函数返回值():

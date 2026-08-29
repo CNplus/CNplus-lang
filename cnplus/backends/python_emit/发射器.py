@@ -382,8 +382,7 @@ class 发射器:
             对象 = self._表达式(e.对象, 环名)
             起 = self._表达式(e.起, 环名) if e.起 is not None else "None"
             止 = self._表达式(e.止, 环名) if e.止 is not None else "None"
-            步 = self._表达式(e.步, 环名) if e.步 is not None else "None"
-            return f"取切片({对象}, {起}, {止}, {步}, {行}, {列})"
+            return f"取切片({对象}, {起}, {止}, {行}, {列})"
         raise AssertionError(f"未处理的表达式类型 {type(e).__name__}")
 
     def _二元(self, e: 二元表达式, 环名: str) -> str:

@@ -1,6 +1,6 @@
 [project]
 name = "cnplus"
-version = "1.4.0"
+version = "1.4.1"
 description = "CNplus —— 使用中文撸代码的编程语言"
 readme = "README.md"
 requires-python = ">=3.11"

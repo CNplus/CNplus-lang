@@ -9,8 +9,7 @@
 from __future__ import annotations
 
 from cnplus.diagnostics import (CN0301_条件必须是布尔, CN0302_未声明变量,
-                                CN0304_除以零, CN0307_重复声明,
-                                CN0312_初始化不能返回值, 诊断袋)
+                                CN0304_除以零, CN0307_重复声明, 诊断袋)
 from cnplus.parser.ast import (二元运算, 二元表达式, 函数声明, 变量引用,
                                声明语句, 如果语句, 字符串字面量, 小数字面量,
                                布尔字面量, 循环语句, 整数字面量, 程序,
@@ -94,7 +93,6 @@ def 提示_未声明(名: str) -> str:
 class 检查器:
     def __init__(self, 袋: 诊断袋) -> None:
         self.袋 = 袋
-        self._在初始化 = False
 
     @staticmethod
     def _近似提示(名: str, 域: "_作用域") -> str:
@@ -153,7 +151,7 @@ class 检查器:
             return
         if isinstance(e, 切片访问):
             self._只查名字(e.对象, 域)
-            for 部分 in (e.起, e.止, e.步):
+            for 部分 in (e.起, e.止):
                 if 部分 is not None:
                     self._只查名字(部分, 域)
             return
@@ -198,12 +196,7 @@ class 检查器:
         for d in 默认们:
             if d is not None:
                 self._表达式(d, 域)
-        原状态 = self._在初始化
-        self._在初始化 = True
-        try:
-            self._块(s.主体, 内)
-        finally:
-            self._在初始化 = 原状态
+        self._块(s.主体, 内)
 
     def _块(self, 语句们: tuple[语句, ...], 域: _作用域) -> None:
         for s in 语句们:
@@ -254,12 +247,7 @@ class 检查器:
                 内.加(p)
             # 允许递归
             内.加(s.名)
-            原状态 = self._在初始化
-            self._在初始化 = False
-            try:
-                self._块(s.主体, 内)
-            finally:
-                self._在初始化 = 原状态
+            self._块(s.主体, 内)
             return
         if isinstance(s, 类声明):
             域.加(s.名)
@@ -297,12 +285,7 @@ class 检查器:
                 for d in 默认们:
                     if d is not None:
                         self._表达式(d, 域)
-                原状态 = self._在初始化
-                self._在初始化 = False
-                try:
-                    self._块(m.主体, 内)
-                finally:
-                    self._在初始化 = 原状态
+                self._块(m.主体, 内)
             return
         if isinstance(s, 自增语句):
             if not 域.有(s.名):
@@ -348,12 +331,6 @@ class 检查器:
             self._表达式(s.值, 域)
             return
         if isinstance(s, 返回语句):
-            if self._在初始化 and (s.值 is not None or s.多值):
-                self.袋.报告(
-                    CN0312_初始化不能返回值,
-                    "初始化不能返回一个值", s.跨,
-                    解释="初始化负责填好新实例，构造结果固定是这个实例本身",
-                    提示="删掉返回值；需要提前结束时只写「返回」")
             if s.值 is not None:
                 self._表达式(s.值, 域)
             for 值 in (s.多值 or ()):
@@ -429,7 +406,7 @@ class 检查器:
             return
         if isinstance(e, 切片访问):
             self._表达式(e.对象, 域)
-            for 部分 in (e.起, e.止, e.步):
+            for 部分 in (e.起, e.止):
                 if 部分 is not None:
                     self._表达式(部分, 域)
             return

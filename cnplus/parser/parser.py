@@ -631,7 +631,6 @@ class 解析器:
         self._吃()  # [
         起: 表达式 | None = None
         止: 表达式 | None = None
-        步: 表达式 | None = None
         是切片 = False
         # 起 可省略：[ : 3] / [:]
         if self._看种() is not 种类.冒号:
@@ -640,15 +639,11 @@ class 解析器:
             是切片 = True
             self._吃()  # :
             # 止 可省略：[1:] / [:]
-            if self._看种() not in (种类.冒号, 种类.右方括号):
+            if self._看种() is not 种类.右方括号:
                 止 = self._表达式()
-            if self._看种() is 种类.冒号:
-                self._吃()
-                if self._看种() is not 种类.右方括号:
-                    步 = self._表达式()
         右 = self._期望(种类.右方括号, "右方括号 ]")
         if 是切片:
-            return 切片访问(对象=对象, 起=起, 止=止, 步=步,
+            return 切片访问(对象=对象, 起=起, 止=止,
                           跨=合并跨度(对象.跨, 右.跨))
         if 起 is None:
             # a[]：什么都没写。报错并造个错误表达式顶位

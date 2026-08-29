@@ -698,54 +698,42 @@ function 造字典(键值对, 行, 列) {
 }
 
 
-function 取切片(对象, 起, 止, 步, 行, 列) {
+function 取切片(对象, 起, 止, 行, 列) {
+    // 与树遍历/Python 后端逐字同语义（D-037）：夹紧/负数/空段
     if (!Array.isArray(对象) && typeof 对象 !== "string") {
         throw new CNplus错误("CN0303", `${类型名(对象)}不能用切片取值`, 行, 列,
-            "只有列表和文字能用 [起:止:步长] 截一段", "检查这个东西的类型");
+            "只有列表和文字能用 [起:止] 截一段",
+            "检查这个东西的类型");
     }
     const 项们 = typeof 对象 === "string" ? [...对象] : 对象;
-    const 长 = BigInt(项们.length);
-    const 整数或空 = (值, 名称) => {
-        if (值 === null || 值 === undefined) return null;
+    const 长 = 项们.length;
+    const 端点 = (值, 缺省) => {
+        if (值 === null || 值 === undefined) return 缺省;
         值 = 拆小数(值);
-        if (typeof 值 !== "bigint") {
-            throw new CNplus错误("CN0303", `切片的${名称}必须是整数，这里是${类型名(值)}`, 行, 列,
-                "[起:止:步长] 里要写位置或步幅，都必须用整数",
-                "例如 名单[1:5:2] 或 名单[::-1]");
+        if (typeof 值 === "bigint") {
+            const 长整数 = BigInt(长);
+            if (值 < 0n) 值 += 长整数;
+            if (值 < 0n) return 0;
+            if (值 > 长整数) return 长;
+            return Number(值);
         }
+        if (typeof 值 !== "number" || !Number.isInteger(值)) {
+            throw new CNplus错误("CN0303",
+                `切片的起止必须是整数，这里是${类型名(值)}`, 行, 列,
+                "[起:止] 两端要写「第几个」，用整数（负数表示从尾数）",
+                "例如 名单[1:3] 或 名单[-2:]");
+        }
+        if (值 < 0) 值 += 长;
+        if (值 < 0) 值 = 0;
         return 值;
     };
-    起 = 整数或空(起, "起点");
-    止 = 整数或空(止, "终点");
-    步 = 整数或空(步, "步长") ?? 1n;
-    if (步 === 0n) {
-        throw new CNplus错误("CN0303", "切片步长不能是 0", 行, 列,
-            "步长是每次往前或往后走几格，写 0 就永远走不动",
-            "改成 1、2 或 -1 这类非零整数");
-    }
-
-    const 规范位置 = (值, 缺省, 是负步) => {
-        if (值 === null) return 缺省;
-        if (值 < 0n) 值 += 长;
-        if (是负步) {
-            if (值 < 0n) return -1n;
-            if (值 >= 长) return 长 - 1n;
-        } else {
-            if (值 < 0n) return 0n;
-            if (值 > 长) return 长;
-        }
-        return 值;
-    };
-    const 负步 = 步 < 0n;
-    let i = 规范位置(起, 负步 ? 长 - 1n : 0n, 负步);
-    const 终 = 规范位置(止, 负步 ? -1n : 长, 负步);
-    const 出 = [];
-    if (负步) {
-        for (; i > 终; i += 步) 出.push(项们[Number(i)]);
-    } else {
-        for (; i < 终; i += 步) 出.push(项们[Number(i)]);
-    }
-    return typeof 对象 === "string" ? 出.join("") : 出;
+    let s = 端点(起, 0);
+    let e = 端点(止, 长);
+    if (s > 长) s = 长;
+    if (e > 长) e = 长;
+    if (s > e) s = e;
+    const 片段 = 项们.slice(s, e);
+    return typeof 对象 === "string" ? 片段.join("") : 片段;
 }
 
 

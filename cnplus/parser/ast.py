@@ -149,7 +149,6 @@ class 切片访问(表达式):
     起: 表达式 | None      # None = 省略（从头）
     止: 表达式 | None      # None = 省略（到尾）
     跨: 跨度
-    步: 表达式 | None = None  # None = 1；可为负数
 
 
 @dataclass(frozen=True, slots=True)
