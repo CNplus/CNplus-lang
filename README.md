@@ -11,7 +11,7 @@
   <a href="https://cnplus.org"><img src="https://img.shields.io/badge/Official_Website-官网-brightgreen?style=flat-square" alt="Official Website"></a>
   <a href="https://forum.cnplus.org"><img src="https://img.shields.io/badge/Forum-论坛-orange?style=flat-square" alt="Forum"></a>
   <a href="https://wiki.cnplus.org"><img src="https://img.shields.io/badge/Wiki-文档-lightgrey?style=flat-square" alt="Wiki"></a>
-  <img src="https://img.shields.io/badge/测试-441%20通过%20·%205%20跳过-brightgreen?style=flat-square" alt="Tests">
+  <img src="https://img.shields.io/badge/测试-全量通过-brightgreen?style=flat-square" alt="Tests">
   <img src="https://img.shields.io/badge/许可-Apache--2.0-blue?style=flat-square" alt="License">
 </p>
 
@@ -31,8 +31,8 @@
 
 **没写过程序？** 从 [Wiki 教程](https://wiki.cnplus.org) 开始，不需要任何基础。
 
-CNplus 有**自己的** lexer、parser 和 AST，后端可插拔。首发后端把 AST 转译成 Python 源码，
-将来可以换成字节码 VM 或别的目标语言，而**前端一行不用改**。
+CNplus 有**自己的** lexer、parser 和 AST，后端可插拔。同一份 AST 已能交给
+树遍历、Python 转译和 JavaScript 转译后端；以后增加字节码 VM，也不需要复制前端。
 
 这一点是本项目的全部要害：玩具和正式语言的分界不在功能（GC、类型系统、VM），
 而在「源码 → AST」和「AST → 执行」之间有没有一条干净的接缝。
@@ -68,8 +68,9 @@ CNplus 始于 2021 年 12 月，最初是一层中文函数名封装（`archive/
 | — | 异常处理(尝试/捕获/最后/抛出) | ✅ v0.7.0 |
 | — | 插值串前缀改 `@`（原 `填`） | ✅ v0.8.0 |
 | 2 | 诊断升级（拼写建议等） | ✅ v0.2.0 |
-| 3 | REPL + LSP 补全/跳转 | ⬜ |
-| 4 | 字节码 VM ／ JS 后端 | ⬜ |
+| 3 | REPL + LSP 补全/悬停/跳转 | ✅ v1.2.0 |
+| 4a | JS 转译后端 | ✅ v1.0.0 |
+| 4b | 字节码 VM | ⬜ |
 
 完整计划见 [`.hermes/plans/`](.hermes/plans/)。
 
@@ -78,20 +79,28 @@ CNplus 始于 2021 年 12 月，最初是一层中文函数名封装（`archive/
 ```bash
 git clone https://github.com/CNplus/CNplus-lang.git
 cd CNplus-lang
-uv venv --python 3.11 && source .venv/bin/activate
-uv pip install -e ".[dev,lsp]"
+python3 -m venv .venv && source .venv/bin/activate
+python -m pip install -e ".[dev,lsp]"
 
 python -m cnplus 运行 示例/01-你好.cnp    # 你好，世界！
+python -m cnplus 运行 --js 示例/01-你好.cnp  # 用 JavaScript 后端运行
 python -m cnplus 检查 示例/05-算总价.cnp  # 只查错不执行
-python -m cnplus 语法树 示例/01-你好.cnp  # 看语法树（调试用）
+python -m cnplus 语法树 示例/01-你好.cnp
 ```
 
-### VSCode 支持
+> `cnp 运行 --js` 需要 Node.js；生成的 JavaScript 也可放入现代浏览器运行。
+
+### VSCode 扩展
+
+从 [Releases](https://github.com/CNplus/CNplus-lang/releases) 下载最新的
+`cnplus-*.vsix`，然后安装：
 
 ```bash
-ln -s "$(pwd)/editors/vscode" ~/.vscode/extensions/cnplus
-cd editors/vscode && npm install
+code --install-extension cnplus-*.vsix
 ```
+
+贡献者也可以在 `editors/vscode/` 运行 `npm install` 和
+`npx @vscode/vsce package`，再用同一条 `code --install-extension` 命令安装产物。
 
 重启 VSCode，打开 `.cnp` 文件即有高亮、实时中文报错、F5 运行。
 详见 [`editors/vscode/README.md`](editors/vscode/README.md)。
@@ -105,7 +114,7 @@ cd editors/vscode && npm install
 
 | 文档 | 给谁看 |
 |---|---|
-| [示例程序](示例/) | 17 个可直接运行的例子，由易到难 |
+| [示例程序](示例/) | 18 个可直接运行的例子，由易到难 |
 | [语义约定](docs/spec/00-语义约定.md) | 想知道精确规则的人 |
 | [诊断码表](docs/spec/03-诊断码.md) | 查错误编号 |
 | [发布说明规范](docs/贡献/release说明规范.md) | 写 release notes 的贡献者 |
@@ -121,7 +130,9 @@ cd editors/vscode && npm install
 2 | 打印(年龄x)
   |      ^^^^^
   = 也就是说: CNplus 不认识 年龄x，因为你还没告诉它这个名字代表什么
-  = 这样改: 是不是想写「年龄」？
+  = 这样改: 是不是想写「年龄」？（多打了后面的字符）
+
+发现 1 个问题。
 ```
 
 ## 一个意思，多种写法
@@ -139,7 +150,7 @@ cd editors/vscode && npm install
 | 遍历 | `遍历 成绩 每个 名字` |
 | 跳出/跳过 | `跳出`（`中断`）/ `继续`（`下一轮`） |
 | 多分支 | `否则 如果 条件` |
-| 自增/累加 | `x++` `x--` / `x += 1` / `字典[键] += 1` |
+| 自增/累加 | `x++` `x--` / `x += 1` / `字典[标签] += 1` |
 | 成员方法 | `名单.追加(x)` |
 | 输入 | `询问("提示")` / `询问数值("提示")` |
 | 插值字符串 | `@"你好，{名字}"` |
