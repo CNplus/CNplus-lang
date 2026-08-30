@@ -6,16 +6,27 @@
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
+from dataclasses import dataclass
 
 from cnplus.diagnostics import 诊断袋
 from cnplus.parser.ast import 程序
 from cnplus.source import 源文件
 
 
+@dataclass(frozen=True)
+class 后端能力:
+    """供 CLI、LSP、playground 查询的产品能力边界。"""
+
+    运行环境们: tuple[str, ...]
+    支持导入: bool
+    支持交互输入: bool
+
+
 class 后端(ABC):
     """把 AST 变成行为的东西。"""
 
     名称: str = "未命名"
+    能力: 后端能力
 
     @abstractmethod
     def 执行(self, 程: 程序, 源: 源文件, 袋: 诊断袋) -> None:

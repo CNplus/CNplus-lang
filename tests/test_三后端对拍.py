@@ -28,6 +28,9 @@ def test_对拍后端注册表合法():
     assert 登记们
     assert len({登记.名称 for 登记 in 登记们}) == len(登记们)
     assert all(登记.名称 and issubclass(登记.后端类, 后端) for 登记 in 登记们)
+    assert all(登记.后端类.能力.运行环境们 for 登记 in 登记们)
+    assert all(isinstance(登记.后端类.能力.支持导入, bool) for 登记 in 登记们)
+    assert all(isinstance(登记.后端类.能力.支持交互输入, bool) for 登记 in 登记们)
 
 
 @dataclass(frozen=True)

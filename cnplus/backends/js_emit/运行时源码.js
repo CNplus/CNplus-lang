@@ -957,26 +957,32 @@ function _求和(序列) {
 
 
 function _询问(提示) {
-    // Node 有 stdin；浏览器侧由宿主替换此实现
-    if (typeof 提示 !== "undefined" && 提示 !== null && 提示 !== undefined) {
-        process.stdout.write(显示(提示));
-    }
-    const 行 = _读一行();
+    const 提示文 = 提示 === null || typeof 提示 === "undefined" ? "" : 显示(提示);
+    const 行 = _读一行(提示文);
     return 行 === null ? "" : 行;
 }
 
 
-function _读一行() {
+function _读一行(提示文 = "") {
+    const 是Node = typeof process !== "undefined" && process !== null
+        && typeof process.stdout !== "undefined"
+        && typeof Buffer !== "undefined" && typeof require === "function";
+    if (!是Node) {
+        return typeof globalThis.prompt === "function" ? globalThis.prompt(提示文) : null;
+    }
+    if (提示文 !== "") process.stdout.write(提示文);
     // 同步读 stdin 一行；EOF 返回 null（不能返回空串——询问数值会死循环）
     try {
-        let 块 = "";
+        const 字节们 = [];
         const 缓冲 = Buffer.alloc(1);
         while (true) {
             const n = require("fs").readSync(0, 缓冲, 0, 1);
-            if (n === 0) return 块 === "" ? null : 块;
-            const 字 = 缓冲.toString("utf8");
-            if (字 === "\n") return 块;
-            块 += 字;
+            if (n === 0 && 字节们.length === 0) return null;
+            if (n === 0 || 缓冲[0] === 0x0A) {
+                if (字节们[字节们.length - 1] === 0x0D) 字节们.pop();
+                return Buffer.from(字节们).toString("utf8");
+            }
+            字节们.push(缓冲[0]);
         }
     } catch (e) {
         return null;
@@ -986,10 +992,8 @@ function _读一行() {
 
 function _询问数值(提示) {
     while (true) {
-        if (提示 !== null && 提示 !== undefined) {
-            process.stdout.write(显示(提示));
-        }
-        const 行 = _读一行();
+        const 提示文 = 提示 === null || typeof 提示 === "undefined" ? "" : 显示(提示);
+        const 行 = _读一行(提示文);
         if (行 === null) {
             throw new CNplus错误("CN0310", "还需要一个数字，但输入已经结束了", 0, 0,
                 "程序还想要输入，可是没有更多输入了",
@@ -1276,16 +1280,18 @@ function 不支持导入(模块名, 行, 列) {
 // 顶层未捕获的 CNplus错误：输出标记行（后端.py 靠它映射回 .cnp）
 // 再以非零码退出。放在最后，覆盖全局。
 
-process.on("uncaughtException", (e) => {
-    if (e instanceof CNplus错误) {
+if (typeof process !== "undefined" && process !== null && typeof process.on === "function") {
+    process.on("uncaughtException", (e) => {
+        if (e instanceof CNplus错误) {
+            console.error("__CNPLUS__" + JSON.stringify({
+                码: e.码, 消息: e.消息, 行: e.行, 列: e.列,
+                提示: e.提示, 解释: e.解释,
+            }));
+            process.exit(1);
+        }
         console.error("__CNPLUS__" + JSON.stringify({
-            码: e.码, 消息: e.消息, 行: e.行, 列: e.列,
-            提示: e.提示, 解释: e.解释,
+            码: "CN9001", 消息: String(e), 行: 0, 列: 0,
         }));
         process.exit(1);
-    }
-    console.error("__CNPLUS__" + JSON.stringify({
-        码: "CN9001", 消息: String(e), 行: 0, 列: 0,
-    }));
-    process.exit(1);
-});
+    });
+}

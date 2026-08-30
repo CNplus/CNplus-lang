@@ -9,7 +9,7 @@ import contextlib
 import io
 from pathlib import Path
 
-from cnplus.backends.base import 后端
+from cnplus.backends.base import 后端, 后端能力
 from cnplus.backends.python_emit.发射器 import 发射
 from cnplus.diagnostics import 诊断袋
 from cnplus.parser.ast import 程序
@@ -18,6 +18,7 @@ from cnplus.source import 源文件
 
 class Python转译后端(后端):
     名称 = "Python 转译"
+    能力 = 后端能力(("Python",), 支持导入=True, 支持交互输入=True)
 
     def __init__(self, 输出=None) -> None:
         self.输出行: list[str] = []

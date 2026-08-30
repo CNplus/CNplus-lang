@@ -3,8 +3,11 @@
 输入用注入的假输入序列，不碰真实标准输入。
 重点覆盖真实踩过的坑：输入耗尽（EOF）时不能死循环。
 """
+import subprocess
+
 import pytest
 
+from cnplus.backends.js_emit import 编译到文件 as 编译JS
 from cnplus.backends.treewalk import 树遍历后端
 from cnplus.checker import 检查
 from cnplus.parser.parser import 解析
@@ -51,6 +54,60 @@ def test_询问_读到的是文字():
 def test_询问_输入结束给空串():
     出, 错 = 跑('设 x = 询问()\n打印(长度(x))', [])
     assert 错 == [] and 出 == ["0"]
+
+
+@pytest.mark.parametrize("行尾", ["", "\n", "\r\n"])
+def test_JS询问按utf8读取中文(tmp_path, 行尾):
+    源 = 源文件('打印(询问())', "中文输入.cnp")
+    程, 袋 = 解析(源)
+    检查(程, 袋)
+    assert not 袋.有错
+    路径 = 编译JS(程, tmp_path / "中文输入.js")
+
+    结果 = subprocess.run(["node", 路径], input="中文" + 行尾,
+                        text=True, capture_output=True, timeout=10)
+    assert 结果.returncode == 0, 结果.stderr
+    assert 结果.stdout.strip() == "中文"
+
+
+def test_JS连续询问各读取一行(tmp_path):
+    源 = 源文件('设 甲 = 询问()\n设 乙 = 询问()\n打印(甲 + "，" + 乙)', "连续输入.cnp")
+    程, 袋 = 解析(源)
+    检查(程, 袋)
+    assert not 袋.有错
+    路径 = 编译JS(程, tmp_path / "连续输入.js")
+
+    结果 = subprocess.run(["node", 路径], input="第一行\n第二行\n",
+                        text=True, capture_output=True, timeout=10)
+    assert 结果.returncode == 0, 结果.stderr
+    assert 结果.stdout.strip() == "第一行，第二行"
+
+
+def test_JS询问数值输错后重试(tmp_path):
+    源 = 源文件('打印(询问数值("数："))', "数值输入.cnp")
+    程, 袋 = 解析(源)
+    检查(程, 袋)
+    assert not 袋.有错
+    路径 = 编译JS(程, tmp_path / "数值输入.js")
+
+    结果 = subprocess.run(["node", 路径], input="中文\n41\n",
+                        text=True, capture_output=True, timeout=10)
+    assert 结果.returncode == 0, 结果.stderr
+    assert "「中文」不是数字，请重新输入。" in 结果.stdout
+    assert 结果.stdout.endswith("41\n")
+
+
+def test_JS询问数值EOF给稳定诊断(tmp_path):
+    源 = 源文件('打印(询问数值())', "数值输入.cnp")
+    程, 袋 = 解析(源)
+    检查(程, 袋)
+    assert not 袋.有错
+    路径 = 编译JS(程, tmp_path / "数值输入.js")
+
+    结果 = subprocess.run(["node", 路径], input="",
+                        text=True, capture_output=True, timeout=10)
+    assert 结果.returncode != 0
+    assert '"码":"CN0310"' in 结果.stderr
 
 
 # ==================== 询问数值 ====================

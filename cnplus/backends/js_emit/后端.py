@@ -10,7 +10,7 @@ import subprocess
 import tempfile
 from pathlib import Path
 
-from cnplus.backends.base import 后端
+from cnplus.backends.base import 后端, 后端能力
 from cnplus.backends.js_emit.发射器 import 发射
 from cnplus.diagnostics import 诊断袋
 from cnplus.parser.ast import 程序
@@ -19,10 +19,12 @@ from cnplus.source import 源文件
 
 class JS转译后端(后端):
     名称 = "JS 转译"
+    能力 = 后端能力(("Node", "浏览器"), 支持导入=False, 支持交互输入=True)
 
-    def __init__(self, 输出=None) -> None:
+    def __init__(self, 输出=None, *, 直通输出: bool = False) -> None:
         self.输出行: list[str] = []
         self._输出回调 = 输出
+        self._直通输出 = 直通输出
         self.最后源码: str = ""
         self.最后退出码: int | None = None
         self.最后错误输出: str = ""
@@ -35,8 +37,13 @@ class JS转译后端(后端):
             f.write(源码)
             路径 = f.name
         try:
-            r = subprocess.run(["node", 路径], capture_output=True,
-                               text=True, timeout=30)
+            捕获输出 = not self._直通输出
+            r = subprocess.run(
+                ["node", 路径],
+                stdout=subprocess.PIPE if 捕获输出 else None,
+                stderr=subprocess.PIPE,
+                text=True, timeout=None if self._直通输出 else 30,
+            )
         finally:
             Path(路径).unlink(missing_ok=True)
         self.最后退出码 = r.returncode
@@ -44,7 +51,7 @@ class JS转译后端(后端):
         if r.returncode != 0:
             self._处理异常(r.stderr, 源, 袋)
             return
-        for 行 in r.stdout.splitlines():
+        for 行 in (r.stdout or "").splitlines():
             self.输出行.append(行)
             if self._输出回调:
                 self._输出回调(行)

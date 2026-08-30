@@ -11,7 +11,7 @@ from __future__ import annotations
 from collections.abc import Iterable, Sized
 from typing import cast
 
-from cnplus.backends.base import 后端, 运行时错误
+from cnplus.backends.base import 后端, 后端能力, 运行时错误
 from cnplus.diagnostics import (CN0301_条件必须是布尔, CN0302_未声明变量,
                                 CN0303_类型不匹配, CN0304_除以零, CN0305_不可调用,
                                 CN0306_实参数量不符, CN0307_重复声明,
@@ -79,6 +79,7 @@ class 环境:
 
 class 树遍历后端(后端):
     名称 = "树遍历"
+    能力 = 后端能力(("Python",), 支持导入=True, 支持交互输入=True)
 
     def __init__(self, 输出=None, 输入=None) -> None:
         self.输出行: list[str] = []
