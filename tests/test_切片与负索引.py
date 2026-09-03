@@ -1,9 +1,10 @@
 """切片与负索引 —— D-037。
 
 语义约定（写入 docs/spec/00-语义约定.md）：
-- a[起:止]：左闭右开，含起不含止
-- 起或止可省略（a[1:] / a[:3] / a[:]）
+- a[起:止:步长]：左闭右开，含起不含止；省略步长等于 1
+- 起、止、步长都可省略（a[1:] / a[:3] / a[:] / a[::2]）
 - 负数从后往前数（a[-1] 单索引；a[-2:] / a[:-1] 切片）
+- 负步长从后向前取；省略起止时从末项取到开头之前
 - 切片越界自动夹紧（不报错）；单索引越界仍报 CN0308
 - 列表与字符串同规则；切片产生新值，不改原值
 """
@@ -11,6 +12,7 @@ import pytest
 
 from cnplus.backends.python_emit import Python转译后端
 from cnplus.backends.treewalk import 树遍历后端
+from cnplus.backends.注册表 import 对拍后端们
 from cnplus.checker import 检查
 from cnplus.parser.parser import 解析
 from cnplus.source import 源文件
@@ -115,6 +117,23 @@ def test_切片_不改原值():
 打印(a)
 打印(b)'''
     assert 对拍(码) == ["[1, 2, 3]", "[1, 2, 99]"]
+
+
+@pytest.mark.parametrize(("码", "期望位置"), [
+    ("打印([1, 2, 3][::1.0])", (1, 16)),
+    ("设 零 = 0\n打印([1, 2, 3][::零])", (2, 16)),
+])
+def test_切片步长诊断指向步长表达式(码: str, 期望位置: tuple[int, int]):
+    for 登记 in 对拍后端们():
+        源 = 源文件(码, "t.cnp")
+        程, 袋 = 解析(源)
+        检查(程, 袋)
+        assert not 袋.有错
+        登记.后端类().执行(程, 源, 袋)
+        assert 袋.有错
+        诊 = 袋.条目[-1]
+        assert 诊.码 == "CN0303"
+        assert (诊.跨.起.行, 诊.跨.起.列) == 期望位置, 登记.名称
 
 
 # ==================== 组合使用 ====================

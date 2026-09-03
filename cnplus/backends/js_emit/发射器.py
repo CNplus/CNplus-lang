@@ -374,7 +374,15 @@ class 发射器:
             对象 = self._表达式(e.对象, 环名)
             起 = self._表达式(e.起, 环名) if e.起 is not None else "null"
             止 = self._表达式(e.止, 环名) if e.止 is not None else "null"
-            return f"取切片({对象}, {起}, {止}, {行}, {列})"
+            步长 = self._表达式(e.步长, 环名) if e.步长 is not None else "null"
+            起位置 = (f"[{e.起.跨.起.行}, {e.起.跨.起.列}]"
+                    if e.起 is not None else "null")
+            止位置 = (f"[{e.止.跨.起.行}, {e.止.跨.起.列}]"
+                    if e.止 is not None else "null")
+            步长位置 = (f"[{e.步长.跨.起.行}, {e.步长.跨.起.列}]"
+                     if e.步长 is not None else "null")
+            return (f"取切片({对象}, {起}, {止}, {步长}, {行}, {列}, "
+                    f"{起位置}, {止位置}, {步长位置})")
         if isinstance(e, 成员访问):
             对象 = self._表达式(e.对象, 环名)
             return f"取成员({对象}, {js_str(e.属性)}, {行}, {列})"

@@ -698,41 +698,62 @@ function 造字典(键值对, 行, 列) {
 }
 
 
-function 取切片(对象, 起, 止, 行, 列) {
-    // 与树遍历/Python 后端逐字同语义（D-037）：夹紧/负数/空段
+function 取切片(对象, 起, 止, 步长, 行, 列, 起位置, 止位置, 步长位置) {
+    // CNplus 三段式合同（D-037 / Issue #22）：正负步长、省略边界、夹紧、空段。
     if (!Array.isArray(对象) && typeof 对象 !== "string") {
         throw new CNplus错误("CN0303", `${类型名(对象)}不能用切片取值`, 行, 列,
-            "只有列表和文字能用 [起:止] 截一段",
+            "只有列表和文字能用 [起:止:步长] 截一段",
             "检查这个东西的类型");
     }
     const 项们 = typeof 对象 === "string" ? [...对象] : 对象;
-    const 长 = 项们.length;
-    const 端点 = (值, 缺省) => {
-        if (值 === null || 值 === undefined) return 缺省;
-        值 = 拆小数(值);
-        if (typeof 值 === "bigint") {
-            const 长整数 = BigInt(长);
-            if (值 < 0n) 值 += 长整数;
-            if (值 < 0n) return 0;
-            if (值 > 长整数) return 长;
-            return Number(值);
-        }
-        if (typeof 值 !== "number" || !Number.isInteger(值)) {
+    const 长 = BigInt(项们.length);
+    const 切片整数 = (值, 名称, 位置) => {
+        if (值 === null || 值 === undefined) return null;
+        const [错行, 错列] = 位置 ?? [行, 列];
+        if (值 instanceof 小数值) {
             throw new CNplus错误("CN0303",
-                `切片的起止必须是整数，这里是${类型名(值)}`, 行, 列,
-                "[起:止] 两端要写「第几个」，用整数（负数表示从尾数）",
-                "例如 名单[1:3] 或 名单[-2:]");
+                `切片的${名称}必须是整数，这里是小数`, 错行, 错列,
+                "[起:止:步长] 三段都要用整数；负步长表示从后向前取",
+                "例如 名单[1:5:2] 或 名单[::-1]");
         }
-        if (值 < 0) 值 += 长;
-        if (值 < 0) 值 = 0;
+        值 = 拆小数(值);
+        if (typeof 值 === "bigint") return 值;
+        if (typeof 值 === "number" && Number.isInteger(值)) return BigInt(值);
+        throw new CNplus错误("CN0303",
+            `切片的${名称}必须是整数，这里是${类型名(值)}`, 错行, 错列,
+            "[起:止:步长] 三段都要用整数；负步长表示从后向前取",
+            "例如 名单[1:5:2] 或 名单[::-1]");
+    };
+    const d = 切片整数(步长, "步长", 步长位置) ?? 1n;
+    if (d === 0n) {
+        const [错行, 错列] = 步长位置 ?? [行, 列];
+        throw new CNplus错误("CN0303", "切片的步长不能是 0", 错行, 错列,
+            "步长表示每次向前或向后移动几个位置，写 0 会一直停在原地",
+            "改成 1、2 或 -1 这类非零整数");
+    }
+    const 正向 = d > 0n;
+    const 归一端点 = (原值, 是起点) => {
+        if (原值 === null) {
+            if (正向) return 是起点 ? 0n : 长;
+            return 是起点 ? 长 - 1n : -1n;
+        }
+        let 值 = 原值;
+        if (值 < 0n) 值 += 长;
+        if (正向) {
+            if (值 < 0n) return 0n;
+            if (值 > 长) return 长;
+            return 值;
+        }
+        if (值 < 0n) return -1n;
+        if (值 >= 长) return 长 - 1n;
         return 值;
     };
-    let s = 端点(起, 0);
-    let e = 端点(止, 长);
-    if (s > 长) s = 长;
-    if (e > 长) e = 长;
-    if (s > e) s = e;
-    const 片段 = 项们.slice(s, e);
+    const s = 归一端点(切片整数(起, "起点", 起位置), true);
+    const e = 归一端点(切片整数(止, "终点", 止位置), false);
+    const 片段 = [];
+    for (let i = s; 正向 ? i < e : i > e; i += d) {
+        片段.push(项们[Number(i)]);
+    }
     return typeof 对象 === "string" ? 片段.join("") : 片段;
 }
 

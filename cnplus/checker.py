@@ -151,7 +151,7 @@ class 检查器:
             return
         if isinstance(e, 切片访问):
             self._只查名字(e.对象, 域)
-            for 部分 in (e.起, e.止):
+            for 部分 in (e.起, e.止, e.步长):
                 if 部分 is not None:
                     self._只查名字(部分, 域)
             return
@@ -406,7 +406,7 @@ class 检查器:
             return
         if isinstance(e, 切片访问):
             self._表达式(e.对象, 域)
-            for 部分 in (e.起, e.止):
+            for 部分 in (e.起, e.止, e.步长):
                 if 部分 is not None:
                     self._表达式(部分, 域)
             return

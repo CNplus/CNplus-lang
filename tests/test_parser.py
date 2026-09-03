@@ -4,7 +4,7 @@ import pytest
 from cnplus.parser.ast import (二元运算, 二元表达式, 函数声明, 变量引用, 声明语句,
                                如果语句, 整数字面量, 循环语句, 表达式语句,
                                调用表达式, 赋值语句, 返回语句, 错误语句, 格式串,
-                               字符串字面量)
+                               字符串字面量, 切片访问)
 from cnplus.parser.parser import 解析
 from cnplus.source import 位置, 源文件
 
@@ -13,9 +13,17 @@ def 析(码: str):
     return 解析(源文件(码, "t.cnp"))
 
 
-def test_切片步长尚未拍板():
-    _程, 袋 = 析("打印([1, 2, 3][::2])")
-    assert any(d.码 == "CN0203" for d in 袋)
+def test_切片第三段保存步长表达式():
+    程, 袋 = 析("打印([1, 2, 3][::2])")
+    assert not 袋.有错
+    语句 = 程.语句们[0]
+    assert isinstance(语句, 表达式语句)
+    调用 = 语句.表达
+    assert isinstance(调用, 调用表达式)
+    切片 = 调用.实参[0]
+    assert isinstance(切片, 切片访问)
+    assert isinstance(切片.步长, 整数字面量)
+    assert 切片.步长.值 == 2
 
 
 def test_声明():

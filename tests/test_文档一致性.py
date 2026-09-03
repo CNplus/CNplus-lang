@@ -29,6 +29,8 @@ def test_README安装和示例数来自仓库事实():
     assert "cnplus-*.vsix" in 文本
     assert "字典[键]" not in 文本
     assert "运行 --js` 需要 Node.js" in 文本
+    assert "数字列表[::2]" in 文本
+    assert "数字列表[::-1]" in 文本
 
 
 def test_README诊断示例匹配当前稳定格式():
