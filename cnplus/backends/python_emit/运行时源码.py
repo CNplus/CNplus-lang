@@ -70,6 +70,10 @@ class _宿主边界错误(TypeError):
     pass
 
 
+class _内置类型错误(TypeError):
+    pass
+
+
 def _含语言字典(值, 已见):
     if isinstance(值, dict):
         return True
@@ -585,6 +589,10 @@ def 调用(被调, 实参们, 关键字们, 行, 列):
             return 被调(*实参们, **kw)
         except CNplus错误:
             raise
+        except _内置类型错误 as ex:
+            raise CNplus错误("CN0303", str(ex), 行, 列,
+                          提示='传入列表或文字；文字也可以写 "甲😀乙"[::-1]',
+                          解释="倒序会返回和输入相同类型的新值") from None
         except IndexError as ex:
             raise CNplus错误("CN0308", str(ex), 行, 列,
                           解释="要弹出的位置不在列表范围内",
@@ -636,6 +644,10 @@ def 点调用(全局, 对象, 方法名, 实参们, 关键字们, 行, 列):
                 return 函数(对象, *实参们)
             except CNplus错误:
                 raise
+            except _内置类型错误 as ex:
+                raise CNplus错误("CN0303", str(ex), 行, 列,
+                              提示='传入列表或文字；文字也可以写 "甲😀乙"[::-1]',
+                              解释="倒序会返回和输入相同类型的新值") from None
             except IndexError as ex:
                 raise CNplus错误("CN0308", f"调用 {方法名} 出错：{ex}", 行, 列) from None
             except Exception as ex:
@@ -1056,6 +1068,14 @@ def _弹出(表, *位置):
     return 表.pop(实际位置)
 
 
+def _倒序(值):
+    if isinstance(值, list):
+        return list(reversed(值))
+    if isinstance(值, str):
+        return "".join(reversed(值))
+    raise _内置类型错误("倒序只接受列表或文字")
+
+
 def _所有标签(字):
     return [_还原字典标签(k) for k in 字.keys()]
 
@@ -1091,7 +1111,7 @@ def _删标签(字, 标签):
     "移除": _移除,
     "弹出": _弹出,
     "排序": lambda 表: sorted(表),
-    "倒序": lambda 表: list(reversed(表)),
+    "倒序": _倒序,
     "包含": _包含,
     "连接": lambda 表, 隔: 隔.join(显示(x) for x in 表),
     "所有标签": _所有标签,

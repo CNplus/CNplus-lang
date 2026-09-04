@@ -47,6 +47,10 @@ class _继续信号(Exception):
     pass
 
 
+class _内置类型错误(TypeError):
+    pass
+
+
 class 环境:
     def __init__(self, 父: 环境 | None = None) -> None:
         self.表: dict[str, object] = {}
@@ -741,6 +745,10 @@ class 树遍历后端(后端):
                         return 内置项.实现(*实参)
                     except 运行时错误:
                         raise
+                    except _内置类型错误 as ex:
+                        raise 运行时错误(CN0303_类型不匹配, str(ex), e.跨,
+                                      提示='传入列表或文字；文字也可以写 "甲😀乙"[::-1]',
+                                      解释="倒序会返回和输入相同类型的新值") from None
                     except IndexError as ex:
                         raise 运行时错误(CN0308_下标越界,
                                       f"调用 {方法名} 出错：{ex}", e.跨) from None
@@ -784,6 +792,10 @@ class 树遍历后端(后端):
                 return 被调.实现(*实参)
             except 运行时错误:
                 raise
+            except _内置类型错误 as ex:
+                raise 运行时错误(CN0303_类型不匹配, str(ex), e.跨,
+                              提示='传入列表或文字；文字也可以写 "甲😀乙"[::-1]',
+                              解释="倒序会返回和输入相同类型的新值") from None
             except IndexError as ex:
                 raise 运行时错误(CN0308_下标越界, str(ex), e.跨,
                               解释="要弹出的位置不在列表范围内",
@@ -1092,6 +1104,14 @@ def _弹出(表, *位置):
     return 表.pop(实际位置)
 
 
+def _倒序(值):
+    if isinstance(值, list):
+        return list(reversed(值))
+    if isinstance(值, str):
+        return "".join(reversed(值))
+    raise _内置类型错误("倒序只接受列表或文字")
+
+
 def _所有标签(字):
     return [还原字典标签(k) for k in 字.keys()]
 
@@ -1177,7 +1197,7 @@ def 内置表(打印实现, 读一行=None):
         ("移除", 2, _移除),
         ("弹出", -2, _弹出),
         ("排序", 1, lambda 表: sorted(表)),
-        ("倒序", 1, lambda 表: list(reversed(表))),
+        ("倒序", 1, _倒序),
         ("包含", 2, _包含),
         ("连接", 2, lambda 表, 隔: 隔.join(显示(x) for x in 表)),
         # ---- 字典 ----
