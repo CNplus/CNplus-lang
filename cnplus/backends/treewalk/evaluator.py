@@ -210,15 +210,18 @@ class 树遍历后端(后端):
             对象 = self._求值(s.对象, 环)
             下标 = self._求值(s.下标, 环)
             if s.复合 is not None:
-                旧 = self._取索引值(对象, 下标, s.跨)
+                旧 = self._取索引值(对象, 下标, s.跨, s.下标.跨)
                 右 = self._求值(s.值, 环)
                 值 = self._算二元(s.复合, 旧, 右, s.跨)
             else:
                 值 = self._求值(s.值, 环)
             try:
                 if isinstance(对象, dict):
-                    下标 = 规范字典标签(下标)
-                对象[下标] = 值
+                    对象[规范字典标签(下标)] = 值
+                elif isinstance(对象, list):
+                    对象[self._序列下标(下标, s.下标.跨)] = 值
+                else:
+                    cast(dict, 对象)[下标] = 值
             except TypeError:
                 raise 运行时错误(CN0303_类型不匹配,
                               f"{类型名(对象)}不能用下标赋值", s.跨,
@@ -454,16 +457,26 @@ class 树遍历后端(后端):
                           提示="例如 名单[1:5:2] 或 名单[::-1]")
         return 值
 
+    def _序列下标(self, 下标: object, 跨) -> int:
+        if isinstance(下标, bool) or not isinstance(下标, int):
+            raise 运行时错误(CN0303_类型不匹配,
+                          f"下标必须是整数，这里是{类型名(下标)}", 跨,
+                          解释="方括号里要写「第几个」，用整数（负数表示从尾数）",
+                          提示="把下标改成整数，例如 0、1 或 -1")
+        return 下标
+
     def _取索引(self, e: 索引访问, 环: 环境) -> object:
         对象 = self._求值(e.对象, 环)
         下标 = self._求值(e.下标, 环)
-        return self._取索引值(对象, 下标, e.跨)
+        return self._取索引值(对象, 下标, e.跨, e.下标.跨)
 
-    def _取索引值(self, 对象: object, 下标: object, 跨) -> object:
+    def _取索引值(self, 对象: object, 下标: object, 跨, 下标跨=None) -> object:
         try:
             if isinstance(对象, dict):
-                下标 = 规范字典标签(下标)
-            return 对象[下标]
+                return 对象[规范字典标签(下标)]
+            if isinstance(对象, (list, str)):
+                return 对象[self._序列下标(下标, 下标跨 or 跨)]
+            return cast(dict, 对象)[下标]
         except TypeError:
             raise 运行时错误(CN0303_类型不匹配,
                           f"{类型名(对象)}不能用下标取值", 跨,
