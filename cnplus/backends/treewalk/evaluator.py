@@ -9,6 +9,7 @@
 from __future__ import annotations
 
 from collections.abc import Iterable, Sized
+from io import StringIO
 from typing import cast
 
 from cnplus.backends.base import 后端, 后端能力, 运行时错误
@@ -85,10 +86,21 @@ class 树遍历后端(后端):
     名称 = "树遍历"
     能力 = 后端能力(("Python",), 支持导入=True, 支持交互输入=True)
 
-    def __init__(self, 输出=None, 输入=None) -> None:
+    def __init__(self, 输出=None, 输入=None, 输入文本: str | None = None) -> None:
+        if 输入 is not None and 输入文本 is not None:
+            raise ValueError("输入和输入文本不能同时提供")
         self.输出行: list[str] = []
         self._输出回调 = 输出
-        self._输入回调 = 输入
+        if 输入文本 is None:
+            self._输入回调 = 输入
+        else:
+            输入流 = StringIO(输入文本)
+
+            def 读一行():
+                行 = 输入流.readline()
+                return None if 行 == "" else 行.rstrip("\r\n")
+
+            self._输入回调 = 读一行
         self._当前源: 源文件 | None = None
         self._最后错误源: 源文件 | None = None
 
@@ -754,7 +766,9 @@ class 树遍历后端(后端):
                 有, 内置项 = 环.取(方法名)
                 if 有 and isinstance(内置项, _内置):
                     实参 = [对象值] + [self._求值(a, 环) for a in e.实参]
+                    self._检查内置实参数量(内置项, len(实参), e.跨)
                     try:
+                        _检查内置类型(内置项.名, 实参)
                         return 内置项.实现(*实参)
                     except 运行时错误:
                         raise
@@ -780,28 +794,9 @@ class 树遍历后端(后端):
                               f"内置函数 {被调.名} 不支持「名字=值」参数", e.跨,
                               解释="内置函数的参数按位置传",
                               提示=f"直接写 {被调.名}(值1, 值2)")
-            if 被调.元数 == -4 and len(实参) > 1:
-                raise 运行时错误(CN0306_实参数量不符,
-                              f"{被调.名} 最多 1 个参数（提示语），给了 {len(实参)} 个", e.跨,
-                              解释=f"{被调.名}() 直接问，{被调.名}(\"提示\") 带提示语",
-                              提示=f'例如：{被调.名}("请输入名字：")')
-            if 被调.元数 == -2 and not (1 <= len(实参) <= 2):
-                raise 运行时错误(CN0306_实参数量不符,
-                              f"{被调.名} 需要 1 或 2 个参数，给了 {len(实参)} 个", e.跨,
-                              解释=f"{被调.名} 的第二个参数是可选的",
-                              提示="检查括号里用逗号隔开的项")
-            if 被调.元数 == -3 and not (1 <= len(实参) <= 3):
-                raise 运行时错误(CN0306_实参数量不符,
-                              f"{被调.名} 需要 1 到 3 个参数，给了 {len(实参)} 个", e.跨,
-                              解释=f"{被调.名} 后两个参数是可选的",
-                              提示="例如：范围(5)、范围(1, 6)、范围(1, 10, 2)")
-            if 被调.元数 >= 0 and len(实参) != 被调.元数:
-                raise 运行时错误(CN0306_实参数量不符,
-                              f"{被调.名} 需要 {被调.元数} 个参数，给了 {len(实参)} 个",
-                              e.跨,
-                              解释=f"括号里该填几个东西是固定的，{被调.名} 要 {被调.元数} 个",
-                              提示="数一数括号里用逗号隔开的项")
+            self._检查内置实参数量(被调, len(实参), e.跨)
             try:
+                _检查内置类型(被调.名, 实参)
                 return 被调.实现(*实参)
             except 运行时错误:
                 raise
@@ -875,6 +870,29 @@ class 树遍历后端(后端):
                       解释="名字后面加括号表示「执行它」，但只有函数能被执行",
                       提示="检查是不是名字写错了，或者本来不该加括号")
 
+    @staticmethod
+    def _检查内置实参数量(被调: _内置, 数量: int, 跨) -> None:
+        if 被调.元数 == -4 and 数量 > 1:
+            raise 运行时错误(CN0306_实参数量不符,
+                          f"{被调.名} 最多 1 个参数（提示语），给了 {数量} 个", 跨,
+                          解释=f"{被调.名}() 直接问，{被调.名}(\"提示\") 带提示语",
+                          提示=f'例如：{被调.名}("请输入名字：")')
+        if 被调.元数 == -2 and not (1 <= 数量 <= 2):
+            raise 运行时错误(CN0306_实参数量不符,
+                          f"{被调.名} 需要 1 或 2 个参数，给了 {数量} 个", 跨,
+                          解释=f"{被调.名} 的第二个参数是可选的",
+                          提示="检查括号里用逗号隔开的项")
+        if 被调.元数 == -3 and not (1 <= 数量 <= 3):
+            raise 运行时错误(CN0306_实参数量不符,
+                          f"{被调.名} 需要 1 到 3 个参数，给了 {数量} 个", 跨,
+                          解释=f"{被调.名} 后两个参数是可选的",
+                          提示="例如：范围(5)、范围(1, 6)、范围(1, 10, 2)")
+        if 被调.元数 >= 0 and 数量 != 被调.元数:
+            raise 运行时错误(CN0306_实参数量不符,
+                          f"{被调.名} 需要 {被调.元数} 个参数，给了 {数量} 个", 跨,
+                          解释=f"括号里该填几个东西是固定的，{被调.名} 要 {被调.元数} 个",
+                          提示="数一数括号里用逗号隔开的项")
+
     def _绑定实参(self, 声明, 实参: list, 关键字: dict, 跨) -> "环境":
         """把位置参数、关键字参数、默认值绑定到形参，返回新环境（父稍后设）。"""
         形参 = 声明.形参
@@ -930,6 +948,8 @@ class _内置:
 
 
 def _转整数(a):
+    if isinstance(a, bool):
+        raise ValueError(f"没法把 {显示(a)} 变成整数")
     try:
         return int(a)
     except (ValueError, TypeError):
@@ -938,6 +958,8 @@ def _转整数(a):
 
 def _转小数(a):
     import math
+    if isinstance(a, bool):
+        raise ValueError(f"没法把 {显示(a)} 变成小数")
     try:
         结果 = float(a)
     except (ValueError, TypeError, OverflowError):
@@ -945,6 +967,67 @@ def _转小数(a):
     if not math.isfinite(结果):
         raise ValueError("小数超出了能表示的范围")
     return 结果
+
+
+def _检查内置类型(名, 实参):
+    if not 实参:
+        return
+    第一个 = 实参[0]
+    if 名 == "绝对值":
+        if isinstance(第一个, bool) or not isinstance(第一个, (int, float)):
+            raise TypeError("绝对值只能用于数字")
+        return
+    if 名 == "长度":
+        if not isinstance(第一个, (list, dict, str)):
+            raise TypeError("长度只能用于列表、字典或文字")
+        return
+    if 名 == "求和":
+        if not isinstance(第一个, list):
+            raise TypeError("求和只能用于列表")
+        return
+    if 名 in {"追加", "插入", "移除", "弹出", "排序", "连接"}:
+        if not isinstance(第一个, list):
+            raise TypeError(f"{名}只能用于列表")
+        if 名 == "排序" and 第一个:
+            第一项 = 第一个[0]
+            if isinstance(第一项, (int, float)) and not isinstance(第一项, bool):
+                合法 = all(isinstance(项, (int, float)) and not isinstance(项, bool)
+                         for 项 in 第一个)
+            elif isinstance(第一项, str):
+                合法 = all(isinstance(项, str) for 项 in 第一个)
+            else:
+                合法 = False
+            if not 合法:
+                raise TypeError("排序的项目必须全是数值或全是文字")
+        if 名 == "连接" and not isinstance(实参[1], str):
+            raise TypeError("连接的分隔内容必须是文字")
+        return
+    if 名 in {"所有标签", "所有值", "有标签", "删标签"}:
+        if not isinstance(第一个, dict):
+            raise TypeError(f"{名}只能用于字典")
+        return
+    if 名 == "包含":
+        if not isinstance(第一个, (list, dict, str)):
+            raise TypeError("包含只能用于列表、字典或文字")
+        if isinstance(第一个, str) and not isinstance(实参[1], str):
+            raise TypeError("文字包含的内容必须是文字")
+        return
+    if 名 in {"分割", "替换", "查找", "去空白", "大写", "小写", "开头是", "结尾是"}:
+        if not isinstance(第一个, str):
+            raise TypeError(f"{名}只能用于文字")
+        if 名 == "分割" and len(实参) == 2 and not isinstance(实参[1], str):
+            raise TypeError("分割的分隔内容必须是文字")
+        if 名 == "替换" and not isinstance(实参[1], str):
+            raise TypeError("替换的原内容必须是文字")
+        if 名 == "替换" and not isinstance(实参[2], str):
+            raise TypeError("替换的新内容必须是文字")
+        if 名 == "查找" and not isinstance(实参[1], str):
+            raise TypeError("查找的内容必须是文字")
+        if 名 == "开头是" and not isinstance(实参[1], str):
+            raise TypeError("开头是的前缀必须是文字")
+        if 名 == "结尾是" and not isinstance(实参[1], str):
+            raise TypeError("结尾是的后缀必须是文字")
+
 
 
 def _范围(*参数):
@@ -1014,6 +1097,15 @@ def _极值(取最大, *参数):
     值们 = list(参数[0]) if len(参数) == 1 and isinstance(参数[0], (list, str)) else list(参数)
     if not 值们:
         raise ValueError("至少要给一个值")
+    第一项 = 值们[0]
+    if isinstance(第一项, (int, float)) and not isinstance(第一项, bool):
+        if any(isinstance(项, bool) or not isinstance(项, (int, float)) for 项 in 值们):
+            raise TypeError("最大/最小的项目必须全是数值或全是文字")
+    elif isinstance(第一项, str):
+        if any(not isinstance(项, str) for 项 in 值们):
+            raise TypeError("最大/最小的项目必须全是数值或全是文字")
+    else:
+        raise TypeError("最大/最小的项目必须全是数值或全是文字")
     当前 = 值们[0]
     for 值 in 值们[1:]:
         当前数 = isinstance(当前, (int, float)) and not isinstance(当前, bool)

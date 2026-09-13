@@ -20,9 +20,10 @@ class Python转译后端(后端):
     名称 = "Python 转译"
     能力 = 后端能力(("Python",), 支持导入=True, 支持交互输入=True)
 
-    def __init__(self, 输出=None) -> None:
+    def __init__(self, 输出=None, 输入文本: str | None = None) -> None:
         self.输出行: list[str] = []
         self._输出回调 = 输出
+        self._输入文本 = 输入文本
         self.最后源码: str = ""
 
     def 执行(self, 程: 程序, 源: 源文件, 袋: 诊断袋) -> None:
@@ -30,9 +31,24 @@ class Python转译后端(后端):
         self.最后源码 = 源码
         缓冲 = io.StringIO()
         文件名 = 源.文件名 + ".py"
+        执行环境 = {}
+        if self._输入文本 is not None:
+            # 生成运行时里的 _读一行 调用全局 input；测试可在这里注入
+            # 确定输入，独立生成文件仍使用 Python 自己的标准输入。
+            输入流 = io.StringIO(self._输入文本)
+
+            def 文本输入(提示=""):
+                if 提示:
+                    print(提示, end="", flush=True)
+                行 = 输入流.readline()
+                if 行 == "":
+                    raise EOFError
+                return 行.rstrip("\r\n")
+
+            执行环境["input"] = 文本输入
         try:
             with contextlib.redirect_stdout(缓冲):
-                exec(compile(源码, 文件名, "exec"), {})
+                exec(compile(源码, 文件名, "exec"), 执行环境)
         except Exception as e:
             self._处理异常(e, 源, 袋, 文件名, 行映射)
         for 行 in 缓冲.getvalue().splitlines():

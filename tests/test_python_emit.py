@@ -41,7 +41,12 @@ def _跑(码: str, 后端类, 文件名="t.cnp"):
 
 # ==================== 对拍：两后端结果一致 ====================
 
-正常语料 = sorted(语料根.glob("*/期望输出.txt"))
+# 带输入的语料由 test_三后端对拍.py 的可注入 runner 统一覆盖；
+# 这里的旧两后端 helper 没有输入参数，不能读取真实 stdin。
+正常语料 = sorted(
+    p for p in 语料根.glob("*/期望输出.txt")
+    if not (p.parent / "输入.txt").exists()
+)
 
 
 @pytest.mark.parametrize("用例", [p.parent for p in 正常语料],
@@ -87,7 +92,10 @@ def test_对拍_示例(文件: Path):
 
 # ==================== 错误语料：转译后端也要报同样的码 ====================
 
-错误语料 = sorted(语料根.glob("*/期望诊断码.txt"))
+错误语料 = sorted(
+    p for p in 语料根.glob("*/期望诊断码.txt")
+    if not (p.parent / "输入.txt").exists()
+)
 
 
 @pytest.mark.parametrize("用例", [p.parent for p in 错误语料],

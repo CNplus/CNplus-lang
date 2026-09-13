@@ -1,0 +1,426 @@
+# tests/test_内置函数合同.py 会把本矩阵与正式规范、三个运行时登记及活动语料交叉校验。
+# evidence 把每个维度绑定到可执行黄金语料或动态专项；form_evidence 逐形式绑定正常语料。
+# 只登记有具体证据的代表性维度，避免无意义的函数×维度笛卡尔积。
+
+[[builtin]]
+name = "打印"
+min_args = 0
+max_args = -1
+dimensions = ["正常输入", "参数数量"]
+evidence = { "正常输入" = "fixture:0001-打印", "参数数量" = "dynamic:arity" }
+forms = ["直接"]
+form_evidence = { "直接" = "0001-打印" }
+fixtures = ["0001-打印"]
+
+[[builtin]]
+name = "询问"
+min_args = 0
+max_args = 1
+dimensions = ["正常输入", "参数数量", "输入结束", "返回值"]
+evidence = { "正常输入" = "fixture:0055-交互输入合同", "参数数量" = "dynamic:arity", "输入结束" = "fixture:0058-询问输入结束返回空文字", "返回值" = "fixture:0058-询问输入结束返回空文字" }
+forms = ["直接"]
+form_evidence = { "直接" = "0055-交互输入合同" }
+fixtures = ["0055-交互输入合同", "0058-询问输入结束返回空文字"]
+
+[[builtin]]
+name = "询问数值"
+min_args = 0
+max_args = 1
+dimensions = ["正常输入", "参数数量", "输入结束", "返回值"]
+evidence = { "正常输入" = "fixture:0055-交互输入合同", "参数数量" = "dynamic:arity", "输入结束" = "fixture:9056-错误-询问数值输入结束", "返回值" = "fixture:0055-交互输入合同" }
+forms = ["直接"]
+form_evidence = { "直接" = "0055-交互输入合同" }
+fixtures = ["0055-交互输入合同", "9056-错误-询问数值输入结束"]
+
+[[builtin]]
+name = "类型"
+min_args = 1
+max_args = 1
+dimensions = ["正常输入", "参数数量", "返回值"]
+evidence = { "正常输入" = "fixture:0012-类型函数", "参数数量" = "dynamic:arity", "返回值" = "fixture:0030-语言内置类型" }
+forms = ["直接"]
+form_evidence = { "直接" = "0012-类型函数" }
+fixtures = ["0012-类型函数", "0030-语言内置类型"]
+
+[[builtin]]
+name = "文本"
+min_args = 1
+max_args = 1
+dimensions = ["正常输入", "参数数量", "返回值"]
+evidence = { "正常输入" = "fixture:0056-内置函数基础合同", "参数数量" = "dynamic:arity", "返回值" = "fixture:0056-内置函数基础合同" }
+forms = ["直接"]
+form_evidence = { "直接" = "0056-内置函数基础合同" }
+fixtures = ["0056-内置函数基础合同"]
+
+[[builtin]]
+name = "整数"
+min_args = 1
+max_args = 1
+dimensions = ["正常输入", "参数数量", "错误类型", "返回值"]
+evidence = { "正常输入" = "fixture:0042-小数转整数向零截断", "参数数量" = "dynamic:arity", "错误类型" = "dynamic:invalid-types", "返回值" = "fixture:0042-小数转整数向零截断" }
+forms = ["直接"]
+form_evidence = { "直接" = "0042-小数转整数向零截断" }
+invalid_call = "整数(真)"
+fixtures = ["0042-小数转整数向零截断"]
+
+[[builtin]]
+name = "小数"
+min_args = 1
+max_args = 1
+dimensions = ["正常输入", "参数数量", "错误类型", "空值或越界", "返回值"]
+evidence = { "正常输入" = "fixture:0060-内置直接调用正常合同", "参数数量" = "dynamic:arity", "错误类型" = "dynamic:invalid-types", "空值或越界" = "fixture:9012-错误-大整数转小数溢出", "返回值" = "fixture:0060-内置直接调用正常合同" }
+forms = ["直接"]
+form_evidence = { "直接" = "0060-内置直接调用正常合同" }
+invalid_call = "小数(真)"
+fixtures = ["9012-错误-大整数转小数溢出", "9043-错误-文字转小数溢出", "0060-内置直接调用正常合同"]
+
+[[builtin]]
+name = "长度"
+min_args = 1
+max_args = 1
+dimensions = ["正常输入", "参数数量", "错误类型", "Unicode", "返回值"]
+evidence = { "正常输入" = "fixture:0022-Unicode码点与取余", "参数数量" = "dynamic:arity", "错误类型" = "dynamic:invalid-types", "Unicode" = "fixture:0022-Unicode码点与取余", "返回值" = "fixture:0022-Unicode码点与取余" }
+forms = ["直接", "点调用"]
+form_evidence = { "直接" = "0022-Unicode码点与取余", "点调用" = "0057-内置点调用合同" }
+receiver = "\"甲😀\""
+invalid_call = "长度(1)"
+fixtures = ["0022-Unicode码点与取余", "0057-内置点调用合同"]
+
+[[builtin]]
+name = "范围"
+min_args = 1
+max_args = 3
+dimensions = ["正常输入", "参数数量", "错误类型", "空值或越界", "返回值"]
+evidence = { "正常输入" = "fixture:0025-BigInt内置边界", "参数数量" = "dynamic:arity", "错误类型" = "dynamic:invalid-types", "空值或越界" = "fixture:9014-错误-范围零步长", "返回值" = "fixture:0025-BigInt内置边界" }
+forms = ["直接"]
+form_evidence = { "直接" = "0025-BigInt内置边界" }
+invalid_call = "范围(真)"
+fixtures = ["0025-BigInt内置边界", "9014-错误-范围零步长", "9039-错误-范围参数必须是整数"]
+
+[[builtin]]
+name = "随机数"
+min_args = 2
+max_args = 2
+dimensions = ["正常输入", "参数数量", "错误类型", "空值或越界", "返回值"]
+evidence = { "正常输入" = "fixture:0041-随机数小数端点向零截断", "参数数量" = "dynamic:arity", "错误类型" = "dynamic:invalid-types", "空值或越界" = "fixture:0025-BigInt内置边界", "返回值" = "fixture:0041-随机数小数端点向零截断" }
+forms = ["直接"]
+form_evidence = { "直接" = "0041-随机数小数端点向零截断" }
+invalid_call = "随机数(\"甲\", 1)"
+fixtures = ["0025-BigInt内置边界", "0041-随机数小数端点向零截断"]
+
+[[builtin]]
+name = "绝对值"
+min_args = 1
+max_args = 1
+dimensions = ["正常输入", "参数数量", "错误类型", "返回值"]
+evidence = { "正常输入" = "fixture:0056-内置函数基础合同", "参数数量" = "dynamic:arity", "错误类型" = "dynamic:invalid-types", "返回值" = "fixture:0056-内置函数基础合同" }
+forms = ["直接"]
+form_evidence = { "直接" = "0056-内置函数基础合同" }
+invalid_call = "绝对值(真)"
+fixtures = ["0056-内置函数基础合同"]
+
+[[builtin]]
+name = "最大"
+min_args = 0
+max_args = -1
+dimensions = ["正常输入", "参数数量", "错误类型", "空值或越界", "返回值"]
+evidence = { "正常输入" = "fixture:0039-最大最小合同", "参数数量" = "dynamic:arity", "错误类型" = "dynamic:invalid-types", "空值或越界" = "fixture:9036-错误-空容器极值", "返回值" = "fixture:0039-最大最小合同" }
+forms = ["直接"]
+form_evidence = { "直接" = "0039-最大最小合同" }
+invalid_call = "最大(1, \"甲\")"
+invalid_calls = ["最大(真)", "最大([真])"]
+fixtures = ["0039-最大最小合同", "9035-错误-极值跨类型比较", "9036-错误-空容器极值"]
+
+[[builtin]]
+name = "最小"
+min_args = 0
+max_args = -1
+dimensions = ["正常输入", "参数数量", "错误类型", "返回值"]
+evidence = { "正常输入" = "fixture:0039-最大最小合同", "参数数量" = "dynamic:arity", "错误类型" = "dynamic:invalid-types", "返回值" = "fixture:0039-最大最小合同" }
+forms = ["直接"]
+form_evidence = { "直接" = "0039-最大最小合同" }
+invalid_call = "最小(1, \"甲\")"
+invalid_calls = ["最小(真)", "最小([真])"]
+fixtures = ["0039-最大最小合同"]
+
+[[builtin]]
+name = "求和"
+min_args = 1
+max_args = 1
+dimensions = ["正常输入", "参数数量", "错误类型", "返回值"]
+evidence = { "正常输入" = "fixture:0056-内置函数基础合同", "参数数量" = "dynamic:arity", "错误类型" = "dynamic:invalid-types", "返回值" = "fixture:0056-内置函数基础合同" }
+forms = ["直接"]
+form_evidence = { "直接" = "0056-内置函数基础合同" }
+invalid_call = "求和(1)"
+invalid_calls = ["求和([真])"]
+fixtures = ["0056-内置函数基础合同"]
+
+[[builtin]]
+name = "四舍五入"
+min_args = 1
+max_args = 2
+dimensions = ["正常输入", "参数数量", "错误类型", "空值或越界", "返回值"]
+evidence = { "正常输入" = "fixture:0036-四舍五入合同", "参数数量" = "dynamic:arity", "错误类型" = "dynamic:invalid-types", "空值或越界" = "fixture:0036-四舍五入合同", "返回值" = "fixture:0036-四舍五入合同" }
+forms = ["直接"]
+form_evidence = { "直接" = "0036-四舍五入合同" }
+invalid_call = "四舍五入(\"甲\")"
+fixtures = ["0036-四舍五入合同", "9038-错误-四舍五入位数类型"]
+
+[[builtin]]
+name = "平方根"
+min_args = 1
+max_args = 1
+dimensions = ["正常输入", "参数数量", "错误类型", "空值或越界", "返回值"]
+evidence = { "正常输入" = "fixture:0060-内置直接调用正常合同", "参数数量" = "dynamic:arity", "错误类型" = "dynamic:invalid-types", "空值或越界" = "fixture:9034-错误-负数平方根", "返回值" = "fixture:0060-内置直接调用正常合同" }
+forms = ["直接"]
+form_evidence = { "直接" = "0060-内置直接调用正常合同" }
+invalid_call = "平方根(\"甲\")"
+fixtures = ["9034-错误-负数平方根", "0060-内置直接调用正常合同"]
+
+[[builtin]]
+name = "追加"
+min_args = 2
+max_args = 2
+dimensions = ["正常输入", "参数数量", "错误类型", "修改原值", "返回值"]
+evidence = { "正常输入" = "fixture:0057-内置点调用合同", "参数数量" = "dynamic:arity", "错误类型" = "dynamic:invalid-types", "修改原值" = "fixture:0057-内置点调用合同", "返回值" = "fixture:0057-内置点调用合同" }
+forms = ["直接", "点调用"]
+form_evidence = { "直接" = "0056-内置函数基础合同", "点调用" = "0057-内置点调用合同" }
+receiver = "[]"
+invalid_call = "追加(\"甲\", 1)"
+fixtures = ["0056-内置函数基础合同", "0057-内置点调用合同"]
+
+[[builtin]]
+name = "插入"
+min_args = 3
+max_args = 3
+dimensions = ["正常输入", "参数数量", "错误类型", "修改原值", "返回值"]
+evidence = { "正常输入" = "fixture:0060-内置直接调用正常合同", "参数数量" = "dynamic:arity", "错误类型" = "dynamic:invalid-types", "修改原值" = "fixture:0060-内置直接调用正常合同", "返回值" = "fixture:0060-内置直接调用正常合同" }
+forms = ["直接", "点调用"]
+form_evidence = { "直接" = "0060-内置直接调用正常合同", "点调用" = "0057-内置点调用合同" }
+receiver = "[]"
+invalid_call = "插入(\"甲\", 0, 1)"
+fixtures = ["9041-错误-插入位置必须是整数", "0057-内置点调用合同", "0060-内置直接调用正常合同"]
+
+[[builtin]]
+name = "移除"
+min_args = 2
+max_args = 2
+dimensions = ["正常输入", "参数数量", "错误类型", "可变值相等", "修改原值", "返回值"]
+evidence = { "正常输入" = "fixture:0037-列表包含移除递归相等", "参数数量" = "dynamic:arity", "错误类型" = "dynamic:invalid-types", "可变值相等" = "fixture:0037-列表包含移除递归相等", "修改原值" = "fixture:0037-列表包含移除递归相等", "返回值" = "fixture:0057-内置点调用合同" }
+forms = ["直接", "点调用"]
+form_evidence = { "直接" = "0037-列表包含移除递归相等", "点调用" = "0057-内置点调用合同" }
+receiver = "[空]"
+invalid_call = "移除(\"甲\", 1)"
+fixtures = ["0037-列表包含移除递归相等", "0057-内置点调用合同"]
+
+[[builtin]]
+name = "弹出"
+min_args = 1
+max_args = 2
+dimensions = ["正常输入", "参数数量", "错误类型", "空值或越界", "修改原值", "返回值"]
+evidence = { "正常输入" = "fixture:0060-内置直接调用正常合同", "参数数量" = "dynamic:arity", "错误类型" = "dynamic:invalid-types", "空值或越界" = "fixture:9033-错误-空列表弹出", "修改原值" = "fixture:0060-内置直接调用正常合同", "返回值" = "fixture:0060-内置直接调用正常合同" }
+forms = ["直接", "点调用"]
+form_evidence = { "直接" = "0060-内置直接调用正常合同", "点调用" = "0057-内置点调用合同" }
+receiver = "[空]"
+invalid_call = "弹出(\"甲\")"
+fixtures = ["9033-错误-空列表弹出", "9037-错误-弹出位置越界", "0057-内置点调用合同", "0060-内置直接调用正常合同"]
+
+[[builtin]]
+name = "排序"
+min_args = 1
+max_args = 1
+dimensions = ["正常输入", "参数数量", "错误类型", "空值或越界", "修改原值", "返回值"]
+evidence = { "正常输入" = "fixture:0060-内置直接调用正常合同", "参数数量" = "dynamic:arity", "错误类型" = "dynamic:invalid-types", "空值或越界" = "fixture:9042-错误-排序跨类型比较", "修改原值" = "fixture:0060-内置直接调用正常合同", "返回值" = "fixture:0060-内置直接调用正常合同" }
+forms = ["直接", "点调用"]
+form_evidence = { "直接" = "0060-内置直接调用正常合同", "点调用" = "0057-内置点调用合同" }
+receiver = "[1]"
+invalid_call = "排序(\"甲\")"
+invalid_calls = ["排序([真, 假])", "排序([真])"]
+fixtures = ["9042-错误-排序跨类型比较", "0057-内置点调用合同", "0060-内置直接调用正常合同"]
+
+[[builtin]]
+name = "倒序"
+min_args = 1
+max_args = 1
+dimensions = ["正常输入", "参数数量", "错误类型", "Unicode", "修改原值", "返回值", "求值顺序", "诊断详情"]
+evidence = { "正常输入" = "fixture:0051-倒序保持输入类型", "参数数量" = "dynamic:arity", "错误类型" = "dynamic:invalid-types", "Unicode" = "fixture:0051-倒序保持输入类型", "修改原值" = "fixture:0051-倒序保持输入类型", "返回值" = "fixture:0051-倒序保持输入类型", "求值顺序" = "fixture:0052-倒序参数只求值一次", "诊断详情" = "test:test_倒序非法类型诊断三层一致" }
+forms = ["直接", "点调用", "别名"]
+form_evidence = { "直接" = "0051-倒序保持输入类型", "点调用" = "0051-倒序保持输入类型", "别名" = "0051-倒序保持输入类型" }
+receiver = "[1]"
+invalid_call = "倒序({\"甲\": 1})"
+fixtures = ["0051-倒序保持输入类型", "0052-倒序参数只求值一次", "9049-错误-倒序字典", "9050-错误-字典点倒序"]
+
+[[builtin]]
+name = "包含"
+min_args = 2
+max_args = 2
+dimensions = ["正常输入", "参数数量", "错误类型", "Unicode", "可变值相等", "返回值"]
+evidence = { "正常输入" = "fixture:0037-列表包含移除递归相等", "参数数量" = "dynamic:arity", "错误类型" = "dynamic:invalid-types", "Unicode" = "fixture:0057-内置点调用合同", "可变值相等" = "fixture:0037-列表包含移除递归相等", "返回值" = "fixture:0037-列表包含移除递归相等" }
+forms = ["直接", "点调用"]
+form_evidence = { "直接" = "0037-列表包含移除递归相等", "点调用" = "0057-内置点调用合同" }
+receiver = "[1]"
+invalid_call = "包含(1, 1)"
+invalid_calls = ["包含(\"123\", 2)"]
+fixtures = ["0037-列表包含移除递归相等", "9032-错误-包含递归类型比较", "0057-内置点调用合同"]
+
+[[builtin]]
+name = "连接"
+min_args = 2
+max_args = 2
+dimensions = ["正常输入", "参数数量", "错误类型", "Unicode", "返回值", "求值顺序"]
+evidence = { "正常输入" = "fixture:0056-内置函数基础合同", "参数数量" = "dynamic:arity", "错误类型" = "dynamic:invalid-types", "Unicode" = "fixture:0056-内置函数基础合同", "返回值" = "fixture:0056-内置函数基础合同", "求值顺序" = "fixture:0059-内置类型错误求值顺序" }
+forms = ["直接", "点调用"]
+form_evidence = { "直接" = "0056-内置函数基础合同", "点调用" = "0057-内置点调用合同" }
+receiver = "[1]"
+invalid_call = "连接(\"甲\", \",\")"
+invalid_calls = ["连接([1], 2)"]
+fixtures = ["0056-内置函数基础合同", "0057-内置点调用合同", "0059-内置类型错误求值顺序"]
+
+[[builtin]]
+name = "所有标签"
+min_args = 1
+max_args = 1
+dimensions = ["正常输入", "参数数量", "错误类型", "修改原值", "返回值"]
+evidence = { "正常输入" = "fixture:0056-内置函数基础合同", "参数数量" = "dynamic:arity", "错误类型" = "dynamic:invalid-types", "修改原值" = "fixture:0056-内置函数基础合同", "返回值" = "fixture:0056-内置函数基础合同" }
+forms = ["直接", "点调用"]
+form_evidence = { "直接" = "0056-内置函数基础合同", "点调用" = "0057-内置点调用合同" }
+receiver = "{\"甲\": 1}"
+invalid_call = "所有标签([])"
+fixtures = ["0056-内置函数基础合同", "0057-内置点调用合同"]
+
+[[builtin]]
+name = "所有值"
+min_args = 1
+max_args = 1
+dimensions = ["正常输入", "参数数量", "错误类型", "修改原值", "返回值"]
+evidence = { "正常输入" = "fixture:0056-内置函数基础合同", "参数数量" = "dynamic:arity", "错误类型" = "dynamic:invalid-types", "修改原值" = "fixture:0056-内置函数基础合同", "返回值" = "fixture:0056-内置函数基础合同" }
+forms = ["直接", "点调用"]
+form_evidence = { "直接" = "0056-内置函数基础合同", "点调用" = "0057-内置点调用合同" }
+receiver = "{\"甲\": 1}"
+invalid_call = "所有值([])"
+fixtures = ["0056-内置函数基础合同", "0057-内置点调用合同"]
+
+[[builtin]]
+name = "有标签"
+min_args = 2
+max_args = 2
+dimensions = ["正常输入", "参数数量", "错误类型", "返回值"]
+evidence = { "正常输入" = "fixture:0060-内置直接调用正常合同", "参数数量" = "dynamic:arity", "错误类型" = "dynamic:invalid-types", "返回值" = "fixture:0060-内置直接调用正常合同" }
+forms = ["直接", "点调用"]
+form_evidence = { "直接" = "0060-内置直接调用正常合同", "点调用" = "0057-内置点调用合同" }
+receiver = "{\"甲\": 1}"
+invalid_call = "有标签([], \"甲\")"
+fixtures = ["9030-错误-有标签非法字典标签", "0057-内置点调用合同", "0060-内置直接调用正常合同"]
+
+[[builtin]]
+name = "删标签"
+min_args = 2
+max_args = 2
+dimensions = ["正常输入", "参数数量", "错误类型", "空值或越界", "修改原值", "返回值"]
+evidence = { "正常输入" = "fixture:0043-删标签返回空", "参数数量" = "dynamic:arity", "错误类型" = "dynamic:invalid-types", "空值或越界" = "fixture:0043-删标签返回空", "修改原值" = "fixture:0043-删标签返回空", "返回值" = "fixture:0043-删标签返回空" }
+forms = ["直接", "点调用"]
+form_evidence = { "直接" = "0043-删标签返回空", "点调用" = "0057-内置点调用合同" }
+receiver = "{\"甲\": 1}"
+invalid_call = "删标签([], \"甲\")"
+fixtures = ["0043-删标签返回空", "9031-错误-删标签非法字典标签", "0057-内置点调用合同"]
+
+[[builtin]]
+name = "分割"
+min_args = 1
+max_args = 2
+dimensions = ["正常输入", "参数数量", "错误类型", "空值或越界", "Unicode", "返回值"]
+evidence = { "正常输入" = "fixture:0038-文字空串边界", "参数数量" = "dynamic:arity", "错误类型" = "dynamic:invalid-types", "空值或越界" = "fixture:0038-文字空串边界", "Unicode" = "fixture:0038-文字空串边界", "返回值" = "fixture:0038-文字空串边界" }
+forms = ["直接", "点调用"]
+form_evidence = { "直接" = "0038-文字空串边界", "点调用" = "0057-内置点调用合同" }
+receiver = "\"甲😀乙\""
+invalid_call = "分割(1)"
+invalid_calls = ["分割(\"甲\", 1)"]
+fixtures = ["0038-文字空串边界", "0057-内置点调用合同"]
+
+[[builtin]]
+name = "替换"
+min_args = 3
+max_args = 3
+dimensions = ["正常输入", "参数数量", "错误类型", "空值或越界", "Unicode", "返回值"]
+evidence = { "正常输入" = "fixture:0038-文字空串边界", "参数数量" = "dynamic:arity", "错误类型" = "dynamic:invalid-types", "空值或越界" = "fixture:0038-文字空串边界", "Unicode" = "fixture:0038-文字空串边界", "返回值" = "fixture:0038-文字空串边界" }
+forms = ["直接", "点调用"]
+form_evidence = { "直接" = "0038-文字空串边界", "点调用" = "0057-内置点调用合同" }
+receiver = "\"甲😀乙\""
+invalid_call = "替换(1, \"甲\", \"乙\")"
+invalid_calls = ["替换(\"甲\", 1, \"乙\")", "替换(\"甲\", \"甲\", 1)"]
+fixtures = ["0038-文字空串边界", "0057-内置点调用合同"]
+
+[[builtin]]
+name = "查找"
+min_args = 2
+max_args = 2
+dimensions = ["正常输入", "参数数量", "错误类型", "空值或越界", "Unicode", "返回值"]
+evidence = { "正常输入" = "fixture:0040-文字查找码点位置", "参数数量" = "dynamic:arity", "错误类型" = "dynamic:invalid-types", "空值或越界" = "fixture:0040-文字查找码点位置", "Unicode" = "fixture:0040-文字查找码点位置", "返回值" = "fixture:0040-文字查找码点位置" }
+forms = ["直接", "点调用"]
+form_evidence = { "直接" = "0040-文字查找码点位置", "点调用" = "0057-内置点调用合同" }
+receiver = "\"甲😀乙\""
+invalid_call = "查找(1, \"甲\")"
+invalid_calls = ["查找(\"甲\", 1)"]
+fixtures = ["0040-文字查找码点位置", "0057-内置点调用合同"]
+
+[[builtin]]
+name = "去空白"
+min_args = 1
+max_args = 1
+dimensions = ["正常输入", "参数数量", "错误类型", "返回值"]
+evidence = { "正常输入" = "fixture:0056-内置函数基础合同", "参数数量" = "dynamic:arity", "错误类型" = "dynamic:invalid-types", "返回值" = "fixture:0056-内置函数基础合同" }
+forms = ["直接", "点调用"]
+form_evidence = { "直接" = "0056-内置函数基础合同", "点调用" = "0057-内置点调用合同" }
+receiver = "\" 甲 \""
+invalid_call = "去空白(1)"
+fixtures = ["0056-内置函数基础合同", "0057-内置点调用合同"]
+
+[[builtin]]
+name = "大写"
+min_args = 1
+max_args = 1
+dimensions = ["正常输入", "参数数量", "错误类型", "Unicode", "返回值"]
+evidence = { "正常输入" = "fixture:0056-内置函数基础合同", "参数数量" = "dynamic:arity", "错误类型" = "dynamic:invalid-types", "Unicode" = "fixture:0056-内置函数基础合同", "返回值" = "fixture:0056-内置函数基础合同" }
+forms = ["直接", "点调用"]
+form_evidence = { "直接" = "0056-内置函数基础合同", "点调用" = "0057-内置点调用合同" }
+receiver = "\"甲a\""
+invalid_call = "大写(1)"
+fixtures = ["0056-内置函数基础合同", "0057-内置点调用合同"]
+
+[[builtin]]
+name = "小写"
+min_args = 1
+max_args = 1
+dimensions = ["正常输入", "参数数量", "错误类型", "Unicode", "返回值"]
+evidence = { "正常输入" = "fixture:0056-内置函数基础合同", "参数数量" = "dynamic:arity", "错误类型" = "dynamic:invalid-types", "Unicode" = "fixture:0056-内置函数基础合同", "返回值" = "fixture:0056-内置函数基础合同" }
+forms = ["直接", "点调用"]
+form_evidence = { "直接" = "0056-内置函数基础合同", "点调用" = "0057-内置点调用合同" }
+receiver = "\"甲A\""
+invalid_call = "小写(1)"
+fixtures = ["0056-内置函数基础合同", "0057-内置点调用合同"]
+
+[[builtin]]
+name = "开头是"
+min_args = 2
+max_args = 2
+dimensions = ["正常输入", "参数数量", "错误类型", "Unicode", "返回值"]
+evidence = { "正常输入" = "fixture:0056-内置函数基础合同", "参数数量" = "dynamic:arity", "错误类型" = "dynamic:invalid-types", "Unicode" = "fixture:0056-内置函数基础合同", "返回值" = "fixture:0056-内置函数基础合同" }
+forms = ["直接", "点调用"]
+form_evidence = { "直接" = "0056-内置函数基础合同", "点调用" = "0057-内置点调用合同" }
+receiver = "\"甲😀乙\""
+invalid_call = "开头是(1, \"甲\")"
+invalid_calls = ["开头是(\"甲\", 1)"]
+fixtures = ["0056-内置函数基础合同", "0057-内置点调用合同"]
+
+[[builtin]]
+name = "结尾是"
+min_args = 2
+max_args = 2
+dimensions = ["正常输入", "参数数量", "错误类型", "Unicode", "返回值"]
+evidence = { "正常输入" = "fixture:0056-内置函数基础合同", "参数数量" = "dynamic:arity", "错误类型" = "dynamic:invalid-types", "Unicode" = "fixture:0056-内置函数基础合同", "返回值" = "fixture:0056-内置函数基础合同" }
+forms = ["直接", "点调用"]
+form_evidence = { "直接" = "0056-内置函数基础合同", "点调用" = "0057-内置点调用合同" }
+receiver = "\"甲😀乙\""
+invalid_call = "结尾是(1, \"甲\")"
+invalid_calls = ["结尾是(\"甲\", 1)"]
+fixtures = ["0056-内置函数基础合同", "0057-内置点调用合同"]

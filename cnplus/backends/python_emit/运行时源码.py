@@ -201,13 +201,35 @@ class 绑定方法:
 
 class _语言内置:
     """显式标记 CNplus 内置，避免与导入的同一 Python 函数混淆。"""
-    __slots__ = ("实现",)
+    __slots__ = ("名", "最少参数", "最多参数", "实现")
 
-    def __init__(self, 实现):
+    def __init__(self, 名, 最少参数, 最多参数, 实现):
+        self.名 = 名
+        self.最少参数 = 最少参数
+        self.最多参数 = 最多参数
         self.实现 = 实现
 
     def __call__(self, *实参, **关键字):
-        return self.实现(*实参, **关键字)
+        return self._调用(list(实参), 关键字, 0, 0)
+
+    def _调用(self, 实参们, 关键字们, 行, 列):
+        数量 = len(实参们) + len(关键字们)
+        if 数量 < self.最少参数:
+            raise CNplus错误("CN0306",
+                          f"{self.名} 至少需要 {self.最少参数} 个参数，给了 {数量} 个",
+                          行, 列, "补上缺少的参数", "括号里的参数太少了")
+        if self.最多参数 >= 0 and 数量 > self.最多参数:
+            raise CNplus错误("CN0306",
+                          f"{self.名} 最多接受 {self.最多参数} 个参数，给了 {数量} 个",
+                          行, 列, "删掉多余的参数", "括号里的参数太多了")
+        if not 关键字们:
+            _检查内置类型(self.名, 实参们)
+        if hasattr(self.实现, "_按位置调用") and not 关键字们:
+            return self.实现._按位置调用(实参们, 行, 列)
+        return self.实现(*实参们, **关键字们)
+
+    def _按位置调用(self, 实参们, 行, 列):
+        return self._调用(实参们, {}, 行, 列)
 
 
 def 类型名(值):
@@ -586,7 +608,7 @@ def 调用(被调, 实参们, 关键字们, 行, 列):
     if isinstance(被调, _语言内置):
         kw = {名: 值 for 名, 值 in 关键字们}
         try:
-            return 被调(*实参们, **kw)
+            return 被调._调用(实参们, kw, 行, 列)
         except CNplus错误:
             raise
         except _内置类型错误 as ex:
@@ -641,7 +663,7 @@ def 点调用(全局, 对象, 方法名, 实参们, 关键字们, 行, 列):
         函数 = 内置们.get(方法名)
         if 函数 is not None:
             try:
-                return 函数(对象, *实参们)
+                return 函数._按位置调用([对象, *实参们], 行, 列)
             except CNplus错误:
                 raise
             except _内置类型错误 as ex:
@@ -934,6 +956,15 @@ def _极值(取最大, *参数):
     值们 = list(参数[0]) if len(参数) == 1 and isinstance(参数[0], (list, str)) else list(参数)
     if not 值们:
         raise ValueError("至少要给一个值")
+    第一项 = 值们[0]
+    if isinstance(第一项, (int, float)) and not isinstance(第一项, bool):
+        if any(isinstance(项, bool) or not isinstance(项, (int, float)) for 项 in 值们):
+            raise TypeError("最大/最小的项目必须全是数值或全是文字")
+    elif isinstance(第一项, str):
+        if any(not isinstance(项, str) for 项 in 值们):
+            raise TypeError("最大/最小的项目必须全是数值或全是文字")
+    else:
+        raise TypeError("最大/最小的项目必须全是数值或全是文字")
     当前 = 值们[0]
     for 值 in 值们[1:]:
         当前数 = isinstance(当前, (int, float)) and not isinstance(当前, bool)
@@ -1032,6 +1063,8 @@ def _询问数值(提示=None):
 
 
 def _转整数(a):
+    if isinstance(a, bool):
+        raise ValueError(f"没法把 {显示(a)} 变成整数")
     try:
         return int(a)
     except (ValueError, TypeError):
@@ -1040,6 +1073,8 @@ def _转整数(a):
 
 def _转小数(a):
     import math
+    if isinstance(a, bool):
+        raise ValueError(f"没法把 {显示(a)} 变成小数")
     try:
         结果 = float(a)
     except (ValueError, TypeError, OverflowError):
@@ -1047,6 +1082,67 @@ def _转小数(a):
     if not math.isfinite(结果):
         raise ValueError("小数超出了能表示的范围")
     return 结果
+
+
+def _检查内置类型(名, 实参):
+    if not 实参:
+        return
+    第一个 = 实参[0]
+    if 名 == "绝对值":
+        if isinstance(第一个, bool) or not isinstance(第一个, (int, float)):
+            raise TypeError("绝对值只能用于数字")
+        return
+    if 名 == "长度":
+        if not isinstance(第一个, (list, dict, str)):
+            raise TypeError("长度只能用于列表、字典或文字")
+        return
+    if 名 == "求和":
+        if not isinstance(第一个, list):
+            raise TypeError("求和只能用于列表")
+        return
+    if 名 in {"追加", "插入", "移除", "弹出", "排序", "连接"}:
+        if not isinstance(第一个, list):
+            raise TypeError(f"{名}只能用于列表")
+        if 名 == "排序" and 第一个:
+            第一项 = 第一个[0]
+            if isinstance(第一项, (int, float)) and not isinstance(第一项, bool):
+                合法 = all(isinstance(项, (int, float)) and not isinstance(项, bool)
+                         for 项 in 第一个)
+            elif isinstance(第一项, str):
+                合法 = all(isinstance(项, str) for 项 in 第一个)
+            else:
+                合法 = False
+            if not 合法:
+                raise TypeError("排序的项目必须全是数值或全是文字")
+        if 名 == "连接" and not isinstance(实参[1], str):
+            raise TypeError("连接的分隔内容必须是文字")
+        return
+    if 名 in {"所有标签", "所有值", "有标签", "删标签"}:
+        if not isinstance(第一个, dict):
+            raise TypeError(f"{名}只能用于字典")
+        return
+    if 名 == "包含":
+        if not isinstance(第一个, (list, dict, str)):
+            raise TypeError("包含只能用于列表、字典或文字")
+        if isinstance(第一个, str) and not isinstance(实参[1], str):
+            raise TypeError("文字包含的内容必须是文字")
+        return
+    if 名 in {"分割", "替换", "查找", "去空白", "大写", "小写", "开头是", "结尾是"}:
+        if not isinstance(第一个, str):
+            raise TypeError(f"{名}只能用于文字")
+        if 名 == "分割" and len(实参) == 2 and not isinstance(实参[1], str):
+            raise TypeError("分割的分隔内容必须是文字")
+        if 名 == "替换" and not isinstance(实参[1], str):
+            raise TypeError("替换的原内容必须是文字")
+        if 名 == "替换" and not isinstance(实参[2], str):
+            raise TypeError("替换的新内容必须是文字")
+        if 名 == "查找" and not isinstance(实参[1], str):
+            raise TypeError("查找的内容必须是文字")
+        if 名 == "开头是" and not isinstance(实参[1], str):
+            raise TypeError("开头是的前缀必须是文字")
+        if 名 == "结尾是" and not isinstance(实参[1], str):
+            raise TypeError("结尾是的后缀必须是文字")
+
 
 
 def _包含(容器, 项):
@@ -1107,6 +1203,46 @@ def _删标签(字, 标签):
     return None
 
 
+_内置参数范围 = {
+    "打印": (0, -1),
+    "询问": (0, 1),
+    "询问数值": (0, 1),
+    "类型": (1, 1),
+    "文本": (1, 1),
+    "整数": (1, 1),
+    "小数": (1, 1),
+    "长度": (1, 1),
+    "范围": (1, 3),
+    "随机数": (2, 2),
+    "绝对值": (1, 1),
+    "最大": (0, -1),
+    "最小": (0, -1),
+    "求和": (1, 1),
+    "四舍五入": (1, 2),
+    "平方根": (1, 1),
+    "追加": (2, 2),
+    "插入": (3, 3),
+    "移除": (2, 2),
+    "弹出": (1, 2),
+    "排序": (1, 1),
+    "倒序": (1, 1),
+    "包含": (2, 2),
+    "连接": (2, 2),
+    "所有标签": (1, 1),
+    "所有值": (1, 1),
+    "有标签": (2, 2),
+    "删标签": (2, 2),
+    "分割": (1, 2),
+    "替换": (3, 3),
+    "查找": (2, 2),
+    "去空白": (1, 1),
+    "大写": (1, 1),
+    "小写": (1, 1),
+    "开头是": (2, 2),
+    "结尾是": (2, 2),
+}
+
+
 内置们 = {
     "打印": _内置_打印,
     "询问": _询问,
@@ -1145,7 +1281,10 @@ def _删标签(字, 标签):
     "开头是": lambda 文, 前: 文.startswith(前),
     "结尾是": lambda 文, 后: 文.endswith(后),
 }
-内置们 = {名: _语言内置(实现) for 名, 实现 in 内置们.items()}
+内置们 = {
+    名: _语言内置(名, *_内置参数范围[名], 实现)
+    for 名, 实现 in 内置们.items()
+}
 
 
 def 建全局环境():
