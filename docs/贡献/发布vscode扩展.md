@@ -17,8 +17,12 @@
 
 ```bash
 cd editors/vscode
+npm ci
 vsce package --allow-missing-repository --no-yarn
 ```
+
+`vsce` 会先运行 `vscode:prepublish`，把扩展入口和语言客户端依赖打成
+`dist/extension.js`；发布包不携带 `node_modules` 和开发源码。
 
 生成 `cnplus-<版本>.vsix`。
 
@@ -70,7 +74,7 @@ vsce package --allow-missing-repository --no-yarn
 
 ## 发布前检查清单
 
-- [ ] `vsce package` 无报错
+- [ ] `npm ci` 后 `vsce package` 无报错，且清单只有 bundle 与扩展资源，不含 `node_modules`
 - [ ] `python tools/生成语法文件.py` 已重跑（关键字有变动时）
 - [ ] `pytest tests/test_语法文件生成.py` 通过（确认无关键字漏项）
 - [ ] 本地装过 `.vsix` 并确认高亮、F5 运行都正常

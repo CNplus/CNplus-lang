@@ -2,16 +2,20 @@
   "name": "cnplus",
   "displayName": "CNplus",
   "description": "CNplus 中文编程语言支持：语法高亮、实时诊断、一键运行",
-  "version": "1.6.2",
+  "version": "1.6.3",
   "publisher": "cnplus",
   "engines": {
-    "vscode": "^1.75.0"
+    "vscode": "^1.82.0"
   },
   "categories": [
     "Programming Languages",
     "Education"
   ],
-  "main": "./extension.js",
+  "main": "./dist/extension.js",
+  "scripts": {
+    "package": "esbuild extension.js --bundle --platform=node --external:vscode --outfile=dist/extension.js --minify",
+    "vscode:prepublish": "npm run package"
+  },
   "capabilities": {
     "untrustedWorkspaces": {
       "supported": "limited",
@@ -87,6 +91,9 @@
   },
   "dependencies": {
     "vscode-languageclient": "^9.0.1"
+  },
+  "devDependencies": {
+    "esbuild": "^0.25.10"
   },
   "license": "Apache-2.0",
   "repository": {

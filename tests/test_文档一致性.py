@@ -69,6 +69,24 @@ def test_版本三处同步():
     assert 项目["project"]["version"] == 初始版本.group(1) == 扩展["version"]
 
 
+def test_vscode包元数据和打包入口一致():
+    扩展目录 = 根 / "editors/vscode"
+    扩展 = json.loads((扩展目录 / "package.json").read_text(encoding="utf-8"))
+    锁 = json.loads((扩展目录 / "package-lock.json").read_text(encoding="utf-8"))
+    锁根 = 锁["packages"][""]
+
+    assert 锁["version"] == 锁根["version"] == 扩展["version"]
+    assert 锁根["license"] == 扩展["license"] == "Apache-2.0"
+    客户端引擎 = 锁["packages"]["node_modules/vscode-languageclient"]["engines"]["vscode"]
+    assert 锁根["engines"]["vscode"] == 扩展["engines"]["vscode"] == 客户端引擎
+    assert 扩展["main"] == "./dist/extension.js"
+    assert "esbuild" in 扩展["devDependencies"]
+    assert "--bundle" in 扩展["scripts"]["package"]
+    assert "--external:vscode" in 扩展["scripts"]["package"]
+    排除项 = set((扩展目录 / ".vscodeignore").read_text(encoding="utf-8").splitlines())
+    assert {"node_modules/**", "extension.js", "package-lock.json", ".gitignore", "*.vsix"} <= 排除项
+
+
 def test_CHANGELOG补记v082且保持版本倒序():
     文本 = (根 / "CHANGELOG.md").read_text(encoding="utf-8")
     assert 文本.count("## [0.8.2]") == 1
