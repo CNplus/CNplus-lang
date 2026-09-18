@@ -76,6 +76,27 @@ def test_示例两后端输出一致(文件: Path):
 
 
 @pytest.mark.parametrize("文件", sorted(示例目录.glob("*.cnp")), ids=lambda p: p.stem)
+def test_示例说明不冒充全部语法且不用旧称呼(文件: Path):
+    码 = 文件.read_text(encoding="utf-8")
+    禁用说法 = ("所有语法", "全部语法", "每一样语法", "全特性", '"全貌"',
+              "格式串（填）", "格式串(填)")
+    命中 = [说法 for 说法 in 禁用说法 if 说法 in 码]
+    assert not 命中, f"{文件.name} 的说明已过时：{命中}"
+
+    行们 = 码.splitlines()
+    程序起点 = next((序号 for 序号, 行 in enumerate(行们)
+                  if 行.strip() and not 行.lstrip().startswith("#")), len(行们))
+    头部 = "\n".join(行们[:程序起点])
+    程序体 = "\n".join(行们[程序起点:])
+    输入函数们 = set(re.findall(r"询问数值|询问(?!数值)", 头部))
+    for 函数名 in 输入函数们:
+        assert f"{函数名}(" in 程序体, f"{文件.name} 没有覆盖声称的输入函数「{函数名}」"
+    if "类型转换" in 头部:
+        转换写法 = ("整数(", "小数(", "文本(", "类型(")
+        assert any(写法 in 程序体 for 写法 in 转换写法), f"{文件.name} 没有覆盖声称的类型转换"
+
+
+@pytest.mark.parametrize("文件", sorted(示例目录.glob("*.cnp")), ids=lambda p: p.stem)
 def test_示例不用多余的引号转义(文件: Path):
     r"""格式串里嵌套索引应写 人['名字']，不写 人[\'名字\']。
 
@@ -85,7 +106,7 @@ def test_示例不用多余的引号转义(文件: Path):
     码 = 文件.read_text(encoding="utf-8")
     assert "\\'" not in 码, (
         f"{文件.name} 里有多余的 \\' 转义。"
-        "格式串里嵌套索引直接用单引号即可：填\"{人['名字']}\"")
+        "格式串里嵌套索引直接用单引号即可：@\"{人['名字']}\"")
 
 
 def test_示例覆盖教程提到的编号():
