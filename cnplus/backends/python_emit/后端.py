@@ -13,7 +13,7 @@ from cnplus.backends.base import 后端, 后端能力
 from cnplus.backends.python_emit.发射器 import 发射
 from cnplus.diagnostics import 诊断袋
 from cnplus.parser.ast import 程序
-from cnplus.source import 源文件
+from cnplus.source import 源文件, 跨度
 
 
 class Python转译后端(后端):
@@ -63,6 +63,11 @@ class Python转译后端(后端):
         # 生成代码里内联的 CNplus错误 是另一个类对象，用鸭子类型识别
         if e.__class__.__name__ == "CNplus错误" and hasattr(e, "码"):
             跨 = 源.跨度于行列(getattr(e, "行"), getattr(e, "列"))
+            止行, 止列 = getattr(e, "止行", None), getattr(e, "止列", None)
+            if isinstance(止行, int) and isinstance(止列, int):
+                止点 = 源.跨度于行列(止行, 止列).起
+                if 止点.偏移 >= 跨.起.偏移:
+                    跨 = 跨度(跨.起, 止点)
             袋.报告(e.码, e.消息, 跨,
                    提示=getattr(e, "提示", None), 解释=getattr(e, "解释", None))
             return

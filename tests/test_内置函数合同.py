@@ -216,9 +216,11 @@ def test_规范与树遍历及Python登记相同的内置名():
     assert set(PYTHON内置们) == 规范
 
 
-def test_内置关键字参数明确标为未定义行为():
+def test_内置关键字参数明确禁止():
     内容 = 规范文件.read_text(encoding="utf-8")
-    assert "内置函数的关键字参数是未定义行为" in 内容
+    assert "只接受位置参数" in 内容
+    assert "直接调用、函数别名和点调用" in 内容
+    assert "关键字参数是未定义行为" not in 内容
 
 
 def test_树遍历与Python登记相同的点调用名():

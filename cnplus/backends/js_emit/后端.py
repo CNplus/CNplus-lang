@@ -14,7 +14,7 @@ from cnplus.backends.base import 后端, 后端能力
 from cnplus.backends.js_emit.发射器 import 发射
 from cnplus.diagnostics import 诊断袋
 from cnplus.parser.ast import 程序
-from cnplus.source import 源文件
+from cnplus.source import 源文件, 跨度
 
 
 class JS转译后端(后端):
@@ -76,16 +76,25 @@ class JS转译后端(后端):
                 continue
             码, 消息 = 信息.get("码"), 信息.get("消息")
             行号, 列号 = 信息.get("行"), 信息.get("列")
+            止行, 止列 = 信息.get("止行"), 信息.get("止列")
             提示, 解释 = 信息.get("提示"), 信息.get("解释")
             if not (isinstance(码, str) and len(码) == 6
                     and 码.startswith("CN") and 码[2:].isdigit()
                     and isinstance(消息, str)
                     and isinstance(行号, int) and not isinstance(行号, bool)
                     and isinstance(列号, int) and not isinstance(列号, bool)
+                    and (止行 is None or (isinstance(止行, int)
+                                         and not isinstance(止行, bool)))
+                    and (止列 is None or (isinstance(止列, int)
+                                         and not isinstance(止列, bool)))
                     and (提示 is None or isinstance(提示, str))
                     and (解释 is None or isinstance(解释, str))):
                 continue
             跨 = 源.跨度于行列(行号, 列号)
+            if isinstance(止行, int) and isinstance(止列, int):
+                止点 = 源.跨度于行列(止行, 止列).起
+                if 止点.偏移 >= 跨.起.偏移:
+                    跨 = 跨度(跨.起, 止点)
             袋.报告(码, 消息, 跨, 提示=提示, 解释=解释)
             return
         袋.报告("CN9001", f"JS 运行时错误：{stderr.strip()[:200]}", 源.跨度于(0, 1),
